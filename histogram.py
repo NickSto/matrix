@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 #
 # TODO:
-# Really need to switch to integer bins when input is integers. One more issue
-# that happens when you don't is artificially empty bins, when the bin size is
-# less than 1. This happens because you can end up with bins which don't contain
-# an integer value. See:
+# Sometimes the alignment of the labels isn't right because trailing zeros are
+# dropped, e.g. 6.50 becomes "6.5". See:
 #   $ awk '{print length($1)}' /usr/share/dict/words | ./histogram.py -l 24
-# The above is also an example of when the alignment of the labels isn't right
-# because trailing zeros are dropped, e.g. 6.50 becomes "6.5". 
 # 
 # General strategy:
 # Separate the truncation of long decimals and computing of label width. Decide
@@ -37,6 +33,7 @@
 # 
 import os
 import sys
+import math
 import subprocess
 import distutils.spawn
 from optparse import OptionParser
@@ -46,7 +43,8 @@ DEFAULT_COLUMNS = 80
 
 OPT_DEFAULTS = {'file':'', 'lines':0, 'width':0, 'sig_digits':4, 'dummy':False,
   'debug':False}
-USAGE = "USAGE: %prog [options]"
+USAGE = """USAGE: cat data | %prog [options]
+      %prog [options] -f data.txt"""
 DESCRIPTION = """Print a quick histogram of the input data. Input format is one
 number per line. If more than one value per line is encountered, it will split
 on whitespace and take the first value. The histogram will be of the frequency
@@ -89,7 +87,6 @@ def main():
     lines = options.lines
   if options.width > 0:
     columns = options.width
-  num_bins = lines
 
   if options.dummy:
     input = dummy_data()
@@ -103,17 +100,22 @@ def main():
   minimum = ''
   maximum = 0
   line_num = 0
+  integers = True
   for line in input:
     line_num+=1
     fields = line.split()
     if not fields:
       continue
     try:
-      value = float(fields[0])
+      value = int(fields[0])
     except ValueError:
-      sys.stderr.write("Warning: Non-number encountered on line "+str(line_num)
-        +': "'+line.rstrip('\r\n')+'"\n')
-      continue
+      try:
+        value = float(fields[0])
+        integers = False
+      except ValueError:
+        sys.stderr.write("Warning: Non-number encountered on line "
+          +str(line_num)+': "'+line.rstrip('\r\n')+'"\n')
+        continue
     data.append(value)
     minimum = min(minimum, value)
     maximum = max(maximum, value)
@@ -125,12 +127,17 @@ def main():
     sys.exit(0)
 
   # calculate bin size
-  bin_size = (maximum - minimum)/num_bins
-  if bin_size == int(bin_size) and minimum == int(minimum):
-    bin_size = int(bin_size)
-    minimum = int(minimum)
+  if integers:
+    bin_size = round(float(maximum - minimum)/lines)
+    if bin_size < 1:
+      bin_size = 1
+    num_bins = int(math.ceil(float(maximum - minimum)/bin_size))
+  else:
+    bin_size = (maximum - minimum)/lines
+    num_bins = lines
   if debug:
-    print str(minimum)+" to "+str(maximum)+", step "+str(bin_size)
+    print ("integers = "+str(integers)+", "+str(minimum)+" to "+str(maximum)
+      +", step "+str(bin_size))
 
   # tally histogram bin totals, store in list
   totals = [0] * num_bins
@@ -162,7 +169,8 @@ def main():
       "columns: "+str(columns)
       +", round_digit: "+str(round_digit)
       +", max_width: "+str(max_width)
-      +"\n")
+      +"\n"
+    )
   max_bar = columns - max_width - len(": ")
   for bin_index in range(num_bins):
     bar_width = int(totals[bin_index]/float(max_total) * max_bar)
@@ -197,14 +205,21 @@ def get_round_digit(bin_nums, sig_digits):
   the second argument to round()). It will round such that sig_digits of the
   largest bin label in hist are kept, but if that result is negative, it will
   return a 0 instead (only round below the decimal)."""
-  round_place = 0
+  round_digit = 0
 
+  integers = True
   highest_radix = -1000
   for bin_num in bin_nums:
+    if isinstance(bin_num, float):
+      integers = False
     highest_radix = max(radix_dist(bin_num), highest_radix)
+  round_digit = sig_digits - highest_radix - 1
 
-  round_place = sig_digits - highest_radix - 1
-  return max(round_place, 0)
+  if integers:
+    round_digit = 0
+  else:
+    round_digit = max(round_digit, 0)
+  return round_digit
 
 
 def get_bin_labels(bin_nums, round_digit):
