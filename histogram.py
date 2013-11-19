@@ -3,7 +3,7 @@
 # TODO:
 # Sometimes the alignment of the labels isn't right because trailing zeros are
 # dropped, e.g. 6.50 becomes "6.5". See:
-#   $ awk '{print length($1)}' /usr/share/dict/words | ./histogram.py -l 24
+#   $ awk '{print length($1)}' /usr/share/dict/words | histogram.py -l 24
 # 
 # General strategy:
 # Separate the truncation of long decimals and computing of label width. Decide
@@ -128,7 +128,7 @@ def main():
 
   # calculate bin size
   if integers:
-    bin_size = round(float(maximum - minimum)/lines)
+    bin_size = int(round(float(maximum - minimum)/lines))
     if bin_size < 1:
       bin_size = 1
     num_bins = int(math.ceil(float(maximum - minimum)/bin_size))
@@ -226,17 +226,27 @@ def get_bin_labels(bin_nums, round_digit):
   """Creates bin labels with proper rounding, returns them in a list, as well as
   the longest string length of the labels."""
   max_width = 0
+  max_decimals = 0
   bin_labels = []
   for bin_num in bin_nums:
     if round_digit == 0:
       bin_label = str(int(bin_num))
     else:
       bin_label = str(round(bin_num, round_digit))
+    if '.' in bin_label:
+      decimals = len(bin_label) - bin_label.index('.') - 1
+      max_decimals = max(decimals, max_decimals)
     max_width = max(len(bin_label), max_width)
     bin_labels.append(bin_label)
 
+  # Align the decimal point of all the numbers by left-padding with spaces
+  # and right-padding with zeros
   for bin_index in range(len(bin_labels)):
     bin_label = bin_labels[bin_index]
+    if '.' in bin_label:
+      decimals = len(bin_label) - bin_label.index('.') - 1
+      if decimals < max_decimals:
+        bin_label += '0' * (max_decimals - decimals)
     spaces_needed = max_width - len(bin_label)
     bin_labels[bin_index] = ' ' * spaces_needed + bin_label
 
