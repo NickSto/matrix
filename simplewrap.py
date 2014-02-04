@@ -72,7 +72,14 @@ class Wrapper(object):
       self.lspace = lspace
       self.indent = indent
 
-  def wrap(self, text):
+  def wrap(self, text, width=None, indent=None, lspace=None):
+    """N.B.: Any attributes set here will persist in the object."""
+    if width is not None:
+      self.width = width
+    if indent is not None:
+      self.indent = indent
+    if lspace is not None:
+      self.lspace = lspace
     wrapped = []
     for line in text.splitlines():
       wrapped.extend(self._textwrapper.wrap(line))
