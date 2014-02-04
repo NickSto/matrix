@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""A wrapper (lol) for textwrap, to simplify its usage."""
+"""A wrapper for textwrap, to simplify its usage and add an important
+capability."""
 import textwrap
 
 DEFAULT_WIDTH = 70
@@ -32,7 +33,7 @@ def wrap(text, width=None, indent=0, lspace=0, **kwargs):
   # put it through textwrap
   wrapped = []
   wrapper = textwrap.TextWrapper(width, **kwargs)
-  for line in text.split('\n'):
+  for line in text.splitlines():
     wrapped.extend(wrapper.wrap(line))
   wrapped_str = '\n'.join(wrapped)
   return wrapped_str
