@@ -73,17 +73,30 @@ class Wrapper(object):
       self.indent = indent
 
   def wrap(self, text, width=None, indent=None, lspace=None):
-    """N.B.: Any attributes set here will persist in the object."""
+    """Note: Attributes given here are temporary (only take effect for this
+    invocation of wrap())."""
+    # set temporary attributes
     if width is not None:
+      width_old = self.width
       self.width = width
     if indent is not None:
+      indent_old = self.indent
       self.indent = indent
     if lspace is not None:
+      lspace_old = self.lspace
       self.lspace = lspace
+    # do wrapping
     wrapped = []
     for line in text.splitlines():
       wrapped.extend(self._textwrapper.wrap(line))
     wrapped_str = '\n'.join(wrapped)
+    # restore permanent attributes
+    if width is not None:
+      self.width = width_old
+    if indent is not None:
+      self.indent = indent_old
+    if lspace is not None:
+      self.lspace = lspace_old
     return wrapped_str
 
   # attributes are only an interface to the TextWrapper's attributes
