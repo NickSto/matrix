@@ -79,12 +79,12 @@ class Wrapper(object):
     if width is not None:
       width_old = self.width
       self.width = width
-    if indent is not None:
-      indent_old = self.indent
-      self.indent = indent
     if lspace is not None:
       lspace_old = self.lspace
       self.lspace = lspace
+    if indent is not None:
+      indent_old = self.indent
+      self.indent = indent
     # do wrapping
     wrapped = []
     for line in text.splitlines():
@@ -93,10 +93,10 @@ class Wrapper(object):
     # restore permanent attributes
     if width is not None:
       self.width = width_old
-    if indent is not None:
-      self.indent = indent_old
     if lspace is not None:
       self.lspace = lspace_old
+    if indent is not None:
+      self.indent = indent_old
     return wrapped_str
 
   # attributes are only an interface to the TextWrapper's attributes
@@ -116,11 +116,13 @@ class Wrapper(object):
   def lspace(self, lspace):
     if lspace < 0:
       lspace = 0
+    # this order is important
+    self._textwrapper.initial_indent = ' ' * (self.indent + lspace)
     self._textwrapper.subsequent_indent = ' ' * lspace
 
   @property
   def indent(self):
-    return len(self._textwrapper.initial_indent) - self.lspace
+    return len(self._textwrapper.initial_indent) - len(self._textwrapper.subsequent_indent)
   @indent.setter
   def indent(self, indent):
     if indent + self.lspace < 0:
