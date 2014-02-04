@@ -56,3 +56,12 @@ def termwidth(default=None):
     return default
   devnull.close()
   return int(output.split()[1])
+
+
+def wrapper(width=None, indent=0, lspace=0, **kwargs):
+  """Return a function that performs wrapping with the same settings each time.
+  Allows defining a shorthand for the full wrap function:
+  wrap_short = simplewrapper.wrapper(width=70, indent=4)
+  print wrap_short('Now you can just give this argument the text, and it will '
+    +'wrap it to 70 characters with an indent of 4 each time.')"""
+  return lambda text: wrap(text, width, indent, lspace, **kwargs)
