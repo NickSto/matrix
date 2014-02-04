@@ -105,6 +105,8 @@ class Wrapper(object):
     return self._textwrapper.width
   @width.setter
   def width(self, width):
+    if width <= 0:
+      width = 1
     self._textwrapper.width = width
 
   @property
@@ -112,6 +114,8 @@ class Wrapper(object):
     return len(self._textwrapper.subsequent_indent)
   @lspace.setter
   def lspace(self, lspace):
+    if lspace < 0:
+      lspace = 0
     self._textwrapper.subsequent_indent = ' ' * lspace
 
   @property
@@ -119,4 +123,6 @@ class Wrapper(object):
     return len(self._textwrapper.initial_indent) - self.lspace
   @indent.setter
   def indent(self, indent):
-    self._textwrapper.initial_indent = (' ' * indent) + self._textwrapper.subsequent_indent
+    if indent + self.lspace < 0:
+      indent = -self.lspace
+    self._textwrapper.initial_indent = ' ' * (indent + self.lspace)
