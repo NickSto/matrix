@@ -64,7 +64,7 @@ def main():
         continue
     data.append(value)
 
-  if hasattr(input_stream, 'close'):
+  if input_stream is not sys.stdin:
     input_stream.close()
 
   if len(data) == 0:
