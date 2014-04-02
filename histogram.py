@@ -127,6 +127,8 @@ def main():
     sys.exit(0)
 
   # calculate bin size
+  if maximum == minimum:
+    fail("There is no variation: all values == "+str(maximum))
   if integers:
     bin_size = int(round(float(maximum - minimum)/lines))
     if bin_size < 1:
