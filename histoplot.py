@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 import os
 import sys
-import math
-from matplotlib import pyplot
 import argparse
+from matplotlib import pyplot
+import munger
 
-OPT_DEFAULTS = {'bins':10, 'x_label':'Value', 'y_label':'Frequency',
+OPT_DEFAULTS = {'field':1, 'bins':10, 'x_label':'Value', 'y_label':'Frequency',
   'color':'cornflowerblue'}
 USAGE = """cat file.txt | %(prog)s [options]
        %(prog)s [options] file.txt"""
@@ -19,10 +19,15 @@ def main():
     epilog=EPILOG)
   parser.set_defaults(**OPT_DEFAULTS)
   parser.add_argument('file', nargs='?', metavar='file.txt',
-    help='Data file. If omitted, data will be read from stdin. '
-      'Should be one number per line. If more than one value per line is '
-      'encountered, it will split on whitespace and take the first value.')
-  parser.add_argument('-f', '--to-file', metavar='OUTPUT_FILE',
+    help='Data file. If omitted, data will be read from stdin. Each line '
+      'should contain one number.')
+  parser.add_argument('-f', '--field', type=int,
+    help='***NOT YET IMPLEMENTED***'
+      'Read this column from the input. Give a 1-based index. Columns are '
+      'whitespace-delimited unless --tab is given. Default column: %(default)s')
+  parser.add_argument('-t', '--tab', action='store_true',
+    help='Split fields on single tabs instead of whitespace.')
+  parser.add_argument('-o', '--out-file', metavar='OUTPUT_FILE',
     help='Save the plot to this file instead of displaying it. The image '
       'format will be inferred from the file extension.')
   parser.add_argument('-b', '--bins', type=int,
@@ -61,23 +66,20 @@ def main():
   # read data into list, parse types into ints or skipping if not possible
   data = []
   line_num = 0
-  integers = True
   for line in input_stream:
     line_num+=1
-    fields = line.split()
-    if not fields:
-      continue
+    value = munger.get_field_value(line, field=args.field, tab=args.tab,
+      errors='warn')
     try:
-      value = int(fields[0])
+      num = int(value)
     except ValueError:
       try:
-        value = float(fields[0])
-        integers = False
+        num = float(value)
       except ValueError:
         sys.stderr.write('Warning: Non-number encountered on line %d: %s\n' %
           (line_num, line.rstrip('\r\n')))
         continue
-    data.append(value)
+    data.append(num)
 
   if input_stream is not sys.stdin:
     input_stream.close()
@@ -104,8 +106,8 @@ def main():
     pyplot.xlim(*x_range)
   if args.title:
     pyplot.title(args.title)
-  if args.to_file:
-    pyplot.savefig(args.to_file, dpi=args.dpi)
+  if args.out_file:
+    pyplot.savefig(args.out_file, dpi=args.dpi)
   else:
     pyplot.show()
 
