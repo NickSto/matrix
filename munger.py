@@ -6,9 +6,9 @@ def get_field_value(line, field=None, tab=False, errors='silent'):
   """Return field given in "field", or the entire line if no field is given.
   If "field" is out of range for the line, return None, and take the action
   indicated by "errors". If it is "throw", an IndexError will be thrown. If it
-  is "verbose", it will print a warning to stderr. If it's "silent", do nothing.
+  is "warn", it will print a warning to stderr. If it is "silent", do nothing.
   """
-  assert errors in ('silent', 'verbose', 'throw'), '"errors" parameter invalid.'
+  assert errors in ('silent', 'warn', 'throw'), '"errors" parameter invalid.'
   if field is None:
     return line
   # split into fields

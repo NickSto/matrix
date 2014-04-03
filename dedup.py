@@ -25,6 +25,10 @@ def main():
   parser.add_argument('-q', '--quiet', action='store_true',
     help='Turn off verbose mode.')
   args = parser.parse_args()
+  if args.quiet:
+    errors = 'silent'
+  else:
+    errors = 'warn'
 
   files = []
   for filename in args.filenames:
@@ -39,7 +43,7 @@ def main():
   for file_ in files:
     for line in file_:
       value = munger.get_field_value(line, field=args.field, tab=args.tab,
-        errors='verbose')
+        errors=errors)
       if not (value in seen or value is None):
         sys.stdout.write(line)
       seen.add(value)
