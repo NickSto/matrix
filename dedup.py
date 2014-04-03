@@ -42,7 +42,7 @@ def main():
   seen = set()
   for file_ in files:
     for line in file_:
-      value = munger.get_field_value(line, field=args.field, tab=args.tab,
+      value = munger.get_field(line, field=args.field, tab=args.tab,
         errors=errors)
       if not (value in seen or value is None):
         sys.stdout.write(line)

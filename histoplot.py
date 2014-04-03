@@ -22,8 +22,7 @@ def main():
     help='Data file. If omitted, data will be read from stdin. Each line '
       'should contain one number.')
   parser.add_argument('-f', '--field', type=int,
-    help='***NOT YET IMPLEMENTED***'
-      'Read this column from the input. Give a 1-based index. Columns are '
+    help='Read this column from the input. Give a 1-based index. Columns are '
       'whitespace-delimited unless --tab is given. Default column: %(default)s')
   parser.add_argument('-t', '--tab', action='store_true',
     help='Split fields on single tabs instead of whitespace.')
@@ -68,7 +67,7 @@ def main():
   line_num = 0
   for line in input_stream:
     line_num+=1
-    value = munger.get_field_value(line, field=args.field, tab=args.tab,
+    value = munger.get_field(line, field=args.field, tab=args.tab,
       errors='warn')
     try:
       num = int(value)
