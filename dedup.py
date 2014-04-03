@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import sys
 import argparse
+import munger
 OPT_DEFAULTS = {}
 USAGE = """cat file.txt | %(prog)s [options]
        %(prog)s [options] file1.txt [file2.txt [file3.txt [...]]]"""
@@ -37,7 +38,8 @@ def main():
   seen = set()
   for file_ in files:
     for line in file_:
-      value = get_field_value(line, args)
+      value = munger.get_field_value(line, field=args.field, tab=args.tab,
+        errors='verbose')
       if not (value in seen or value is None):
         sys.stdout.write(line)
       seen.add(value)
@@ -45,25 +47,6 @@ def main():
   for file_ in files:
     if file_ is not sys.stdin:
       file_.close()
-
-
-def get_field_value(line, args):
-  """Return field given in args.field, or the entire line if no field is given.
-  Return None if args.field is out of range."""
-  if not args.field:
-    return line
-  # split into fields
-  if args.tab:
-    fields = line.strip('\r\n').split('\t')
-  else:
-    fields = line.strip('\r\n').split()
-  # return requested field
-  try:
-    return fields[args.field-1]
-  except IndexError:
-    if not args.quiet:
-      sys.stderr.write('Warning: not enough fields for line:\n'+line)
-    return None
 
 
 if __name__ == '__main__':
