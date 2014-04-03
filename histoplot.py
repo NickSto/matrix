@@ -27,8 +27,14 @@ def main():
       'format will be inferred from the file extension.')
   parser.add_argument('-b', '--bins', type=int,
     help='Number of histogram bins. Default: %(default)s')
+  parser.add_argument('-B', '--bin-edges', nargs='+', type=float,
+    help='Specify the exact edges of each bin. Give the value of each bin edge '
+      'as a separate argument. Overrides --bins.')
   parser.add_argument('-D', '--dpi', type=int,
-    help='DPI of the image, if saving to a file.')
+    help='DPI of the image, if saving to a file. If not given, matplotlib\'s '
+      'default will be used (seems to be about 100dpi).')
+  parser.add_argument('-T', '--title',
+    help='Plot title. Default: %(default)s')
   parser.add_argument('-X', '--x-label',
     help='Label for the X axis. Default: %(default)s')
   parser.add_argument('-Y', '--y-label',
@@ -36,6 +42,15 @@ def main():
   parser.add_argument('-C', '--color',
     help='Color for the histogram bars. Can use any CSS color. Default: '
       '"%(default)s".')
+  parser.add_argument('-r', '--range', type=float, nargs=2, metavar='BOUND',
+    help='Range of the X axis and bins. Give the lower bound, then the upper.')
+  parser.add_argument('-R', '--bin-range', type=float, nargs=2, metavar='BOUND',
+    help='Range of the bins only. This will be used when calculating the size '
+      'of the bins (unless -B is given), but it won\'t affect the scaling of '
+      'the X axis. Give the lower bound, then the upper.')
+  parser.add_argument('-S', '--x-range', type=float, nargs=2, metavar='BOUND',
+    help='Range of the X axis only. This will change the scale of the X axis, '
+      'but not the size of the bins. Give the lower bound, then the upper.')
   args = parser.parse_args()
 
   if args.file:
@@ -70,11 +85,27 @@ def main():
   if len(data) == 0:
     sys.exit(0)
 
-  pyplot.hist(data, color=args.color)
+  # Compute plot settings from arguments
+  if args.bin_edges:
+    bins = args.bin_edges
+  else:
+    bins = args.bins
+  if args.range:
+    bin_range = args.range
+    x_range = args.range
+  else:
+    bin_range = args.bin_range
+    x_range = args.x_range
+
+  pyplot.hist(data, bins=bins, range=bin_range, color=args.color)
   pyplot.xlabel(args.x_label)
   pyplot.ylabel(args.y_label)
+  if x_range:
+    pyplot.xlim(*x_range)
+  if args.title:
+    pyplot.title(args.title)
   if args.to_file:
-    pyplot.savefig(args.to_file)
+    pyplot.savefig(args.to_file, dpi=args.dpi)
   else:
     pyplot.show()
 
