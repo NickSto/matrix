@@ -81,41 +81,31 @@ class AccountsReader(object):
         if top_level == 'online' and section is None:
 
           # Are we at the start of an entry?
-          # (Defined as a line with no leading whitespace.)
-          if re.search(r'^\S', line):
-            # Store previous entry
+          site_match = re.search(SITE_REGEX, line)
+          if site_match:
+            # Store previous entry and initialize a new one
             if entry is not None:
               entries.append(entry)
-            site_match = re.search(SITE_REGEX, line)
-            if site_match:
-              # If it's a recognized entry header, initialize a new entry
-              entry = AccountsEntry()
-              entry.site = site_match.group(1)
-              site_url_match = re.search(SITE_URL_REGEX, line)
-              if site_url_match:
-                entry.site = site_url_match.group(1)
-                entry.site_alias = None
-                site_alias_match = re.search(SITE_ALIAS_REGEX, line)
-                if site_alias_match:
-                  entry.site_alias = site_alias_match.group(1)
-                  site_old = entry.site
-                  entry.site = site_old.replace(' ('+entry.site_alias+')', '')
-                  if entry.site == site_old:
-                    message = ('Failed to remove alias "'+entry.site_alias+
-                      '" from site name "'+entry.site+'".')
-                    self.errors.append(
-                      {'message':message, 'line':line_num, 'data':line}
-                    )
-            else:
-              # If it's not a recognized entry header, don't assume we know
-              # which entry we're in, to be safe.
-              message = 'Line is like an entry header, but malformed.'
-              self.errors.append(
-                {'message':message, 'line':line_num, 'data':line}
-              )
-              entry = None
-            subsection = 'default'
+            entry = AccountsEntry()
+            # Determine and set the site name, alias, and url
+            entry.site = site_match.group(1)
+            site_url_match = re.search(SITE_URL_REGEX, line)
+            if site_url_match:
+              entry.site = site_url_match.group(1)
+              entry.site_alias = None
+              site_alias_match = re.search(SITE_ALIAS_REGEX, line)
+              if site_alias_match:
+                entry.site_alias = site_alias_match.group(1)
+                site_old = entry.site
+                entry.site = site_old.replace(' ('+entry.site_alias+')', '')
+                if entry.site == site_old:
+                  message = ('Failed to remove alias "'+entry.site_alias+
+                    '" from site name "'+entry.site+'".')
+                  self.errors.append(
+                    {'message':message, 'line':line_num, 'data':line}
+                  )
             account = 0
+            subsection = 'default'
             last_line = line
             continue
 
@@ -125,7 +115,7 @@ class AccountsReader(object):
             last_line = line
             continue
 
-          # What kind of line are we on?
+          # What kind of data line are we on?
           account_num_match = re.search(ACCOUNT_NUM_REGEX, line)
           subsection_match1 = re.search(SUBSECTION_REGEX1, line)
           subsection_match2 = re.search(SUBSECTION_REGEX2, line)
@@ -171,6 +161,15 @@ class AccountsReader(object):
             elif cc_line_match:
               # "stored credit card" note
               entry.add_keyval('stored credit card', True, account, subsection)
+            elif re.search(r'^\S', line):
+              # If it's not indented, take the safe route and assume it could be
+              # an unrecognized entry header. That means we no longer know which
+              # entry we're in.
+              entry = None
+              message = 'Line is like an entry header, but malformed.'
+              self.errors.append(
+                {'message':message, 'line':line_num, 'data':line}
+              )
             else:
               # Unrecognized.
               message = 'Unrecognized line.'
