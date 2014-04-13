@@ -35,15 +35,14 @@ class FormatError(Exception):
       Exception.__init__(self, message)
 
 
-class AccountsReader(object):
+class AccountsReader(list):
   def __init__(self, filepath):
+    super(AccountsReader, self).__init__()
     self.errors = []
-    self.entries = self._parse_accounts(filepath)
+    self._parse_accounts(filepath)
 
   def _parse_accounts(self, filepath):
-    """The parsing engine itself.
-    Returns a list of entries."""
-    entries = []
+    """The parsing engine itself."""
     line_num = 0
     last_line = None
     top_level = None
@@ -85,7 +84,7 @@ class AccountsReader(object):
           if site_match:
             # Store previous entry and initialize a new one
             if entry is not None:
-              entries.append(entry)
+              self.append(entry)
             entry = AccountsEntry()
             # Determine and set the site name, alias, and url
             entry.site = site_match.group(1)
@@ -141,7 +140,7 @@ class AccountsReader(object):
             if ';' in value:
               # multiple values?
               value = [elem.strip() for elem in value.split(';')]
-            entry.add_keyval(key, value, account, subsection)
+            entry[(key, account, subsection)] = value
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -160,7 +159,7 @@ class AccountsReader(object):
               self._add_qln(entry, account, subsection)
             elif cc_line_match:
               # "stored credit card" note
-              entry.add_keyval('stored credit card', True, account, subsection)
+              entry[('stored credit card', account, subsection)] = True
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
@@ -185,24 +184,17 @@ class AccountsReader(object):
         {'message':message, 'line':None, 'data':None}
       )
 
-    return entries
 
   def _add_qln(self, entry, account, subsection):
-    entry.add_keyval('username', 'qwerty0', account, subsection)
-    entry.add_keyval('password', 'least secure', account, subsection)
-    entry.add_keyval('email', 'nmapsy', account, subsection)
+    entry[('username', account, subsection)] = 'qwerty0'
+    entry[('password', account, subsection)] = 'least secure'
+    entry[('email', account, subsection)] = 'nmapsy'
 
 
-#TODO: Make this inherit from OrderedDict itself
-class AccountsEntry(object):
+#TODO: Special handling of entry['foo'] with default accounts, subsections
+class AccountsEntry(collections.OrderedDict):
   def __init__(self):
-    self._keyvals = collections.OrderedDict()
+    super(AccountsEntry, self).__init__()
     self.site = None
     self.site_alias = None
     self.site_url = None
-
-  def add_keyval(self, key, value, account=0, subsection='default'):
-    self._keyvals[(key, account, subsection)] = value
-
-  def get_val(self, key, account=0, subsection='default'):
-    return self._keyvals[(key, account, subsection)]
