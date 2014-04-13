@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-#TODO: turn into module
+#TODO: continue after format errors
 #TODO: deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
 #TODO: deal with "[deleted]" and binary flags in general
 from __future__ import division
 import re
-import os
-import sys
-import argparse
+import collections
 
 OPT_DEFAULTS = {'validate':True}
 USAGE = "%(prog)s [options]"
@@ -27,183 +25,185 @@ KEYVAL_REGEX = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
 KEYVAL_NEW_REGEX = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
 # Special cases
 URL_LINE_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
-QLN_LINE_REGEX = r'^\s+([A-Z]{3})(?:\s+\S.*$|\s*$)'
+QLN_LINE_REGEX = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
 CC_LINE_REGEX = r'\s*\*.*credit card.*\*\s*'
 
-def main():
 
-  parser = argparse.ArgumentParser(
-    description=DESCRIPTION, usage=USAGE, epilog=EPILOG)
-  parser.set_defaults(**OPT_DEFAULTS)
+class FormatError(Exception):
+  def __init__(self, message=None):
+    if message:
+      Exception.__init__(self, message)
 
-  parser.add_argument('accounts_file', nargs='?',
-    help='Default: ~/'+ACCOUNTS_FILE_DEFAULT)
-  parser.add_argument('-v', '--validate', action='store_true',
-    help='Just check the file to make sure it still conforms to the '
-      'assumptions of the parser.')
-  parser.add_argument('-q', '--quiet', action='store_true',
-    help="""Don't print warnings.""")
-  parser.add_argument('-O', '--stdout', action='store_true',
-    help="""Suppress normal output and print warnings to stdout.""")
 
-  args = parser.parse_args()
+class AccountsReader(object):
+  def __init__(self, filepath):
+    self.errors = []
+    self.entries = self._parse_accounts(filepath)
 
-  if args.validate:
-    level = 'warn'
-  else:
-    level = 'die'
-  if args.quiet:
-    level = 'silent'
-  if args.stdout:
-    level = 'stdout'
-
-  if args.accounts_file:
-    accounts_file = args.accounts_file
-  else:
-    home = os.path.expanduser('~')
-    accounts_file = os.path.join(home, ACCOUNTS_FILE_DEFAULT)
-
-  last_line = None
-  top_level = None
-  section = None
-  with open(accounts_file, 'rU') as accounts_filehandle:
-    for line_raw in accounts_filehandle:
-      line = line_raw.rstrip('\r\n')
-      # Skip blank or commented lines
-      line_stripped = line.strip()
-      if not line_stripped or line_stripped.startswith('#'):
-        continue
-      # At a top-level section heading?
-      # (In addition to matching the regex, the previous line must contain
-      # at least 20 "="s in a row.)
-      if last_line is not None and '=' * 20 in last_line:
-        top_level_match = re.search(TOP_LEVEL_REGEX, line)
-        if top_level_match:
-          top_level = top_level_match.group(1).lower()
-          if not args.stdout: print '====='+top_level+'====='
-          last_line = line
+  def _parse_accounts(self, filepath):
+    """The parsing engine itself.
+    Returns a list of entries."""
+    entries = []
+    line_num = 0
+    last_line = None
+    top_level = None
+    section = None
+    entry = None
+    with open(filepath, 'rU') as filehandle:
+      for line_raw in filehandle:
+        line_num+=1
+        line = line_raw.rstrip('\r\n')
+        # Skip blank or commented lines
+        line_stripped = line.strip()
+        if not line_stripped or line_stripped.startswith('#'):
           continue
-      # At a 2nd-level section heading?
-      # (Previous line must contain at least 20 "-"s in a row.)
-      if last_line is not None and '-' * 20 in last_line:
-        section_match = re.search(SECTION_REGEX, line)
-        if section_match:
-          section = section_match.group(1).lower()
-          if not args.stdout: print '-----'+section+'-----'
-          last_line = line
-          continue
-      # Parse 'online' top-level section
-      if top_level == 'online' and section is None:
-        # What kind of line are we on?
-        site_match = re.search(SITE_REGEX, line)
-        account_num_match = re.search(ACCOUNT_NUM_REGEX, line)
-        subsection_match1 = re.search(SUBSECTION_REGEX1, line)
-        subsection_match2 = re.search(SUBSECTION_REGEX2, line)
-        keyval_match = re.search(KEYVAL_REGEX, line)
-        if site_match:
-          # Start of a new entry
-          site = site_match.group(1)
-          site_url_match = re.search(SITE_URL_REGEX, line)
-          if site_url_match:
-            site = site_url_match.group(1)
-            site_alias = None
-            site_alias_match = re.search(SITE_ALIAS_REGEX, line)
-            if site_alias_match:
-              site_alias = site_alias_match.group(1)
-              site_old = site
-              site = site_old.replace(' ('+site_alias+')', '')
-              if site == site_old:
-                warn('Failed to remove alias from site name', line, 'die')
-          if not args.stdout: print site+':'
-          if site_alias and not args.stdout:
-            print '('+site_alias+'):'
-          subsection = None
-          account_num = 0
-        elif account_num_match:
-          account_num = int(account_num_match.group(1))
-          subsection = None
-          if not args.stdout: print "{account"+str(account_num)+"}"
-        elif subsection_match1 or subsection_match2:
-          # start of subsection
-          if subsection_match1:
-            subsection = subsection_match1.group(1)
+
+        # At a top-level section heading?
+        # (In addition to matching the regex, the previous line must contain
+        # at least 20 "="s in a row.)
+        if last_line is not None and '=' * 20 in last_line:
+          top_level_match = re.search(TOP_LEVEL_REGEX, line)
+          if top_level_match:
+            top_level = top_level_match.group(1).lower()
+            last_line = line
+            continue
+
+        # At a 2nd-level section heading?
+        # (Previous line must contain at least 20 "-"s in a row.)
+        if last_line is not None and '-' * 20 in last_line:
+          section_match = re.search(SECTION_REGEX, line)
+          if section_match:
+            section = section_match.group(1).lower()
+            last_line = line
+            continue
+
+        # Parse 'online' top-level section (the one with the account info)
+        if top_level == 'online' and section is None:
+
+          # Are we at the start of an entry?
+          # (Defined as a line with no leading whitespace.)
+          if re.search(r'^\S', line):
+            # Store previous entry
+            if entry is not None:
+              entries.append(entry)
+            site_match = re.search(SITE_REGEX, line)
+            if site_match:
+              # If it's a recognized entry header, initialize a new entry
+              entry = AccountsEntry()
+              entry.site = site_match.group(1)
+              site_url_match = re.search(SITE_URL_REGEX, line)
+              if site_url_match:
+                entry.site = site_url_match.group(1)
+                entry.site_alias = None
+                site_alias_match = re.search(SITE_ALIAS_REGEX, line)
+                if site_alias_match:
+                  entry.site_alias = site_alias_match.group(1)
+                  site_old = entry.site
+                  entry.site = site_old.replace(' ('+entry.site_alias+')', '')
+                  if entry.site == site_old:
+                    message = ('Failed to remove alias "'+entry.site_alias+
+                      '" from site name "'+entry.site+'".')
+                    self.errors.append(
+                      {'message':message, 'line':line_num, 'data':line}
+                    )
+            else:
+              # If it's not a recognized entry header, don't assume we know
+              # which entry we're in, to be safe.
+              message = 'Line is like an entry header, but malformed.'
+              self.errors.append(
+                {'message':message, 'line':line_num, 'data':line}
+              )
+              entry = None
+            subsection = 'default'
+            account = 0
+            last_line = line
+            continue
+
+          # If we don't know what entry we're in, skip the rest and get back to
+          # looking for an entry header.
+          if entry is None:
+            last_line = line
+            continue
+
+          # What kind of line are we on?
+          account_num_match = re.search(ACCOUNT_NUM_REGEX, line)
+          subsection_match1 = re.search(SUBSECTION_REGEX1, line)
+          subsection_match2 = re.search(SUBSECTION_REGEX2, line)
+          keyval_match = re.search(KEYVAL_REGEX, line)
+          if account_num_match:
+            account = int(account_num_match.group(1))
+            subsection = 'default'
+          elif subsection_match1 or subsection_match2:
+            # start of subsection
+            if subsection_match1:
+              subsection = subsection_match1.group(1)
+            else:
+              subsection = subsection_match2.group(1)
+          elif keyval_match:
+            # a key/value data line
+            keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
+            if keyval_new_match:
+              key = keyval_new_match.group(1)
+              value = keyval_new_match.group(2)
+            else:
+              key = keyval_match.group(1)
+              value = keyval_match.group(2)
+            if ';' in value:
+              # multiple values?
+              value = [elem.strip() for elem in value.split(';')]
+            entry.add_keyval(key, value, account, subsection)
+          elif '=' * 20 in line or '-' * 20 in line:
+            # heading divider
+            pass
           else:
-            subsection = subsection_match2.group(1)
-          if not args.stdout: print '['+subsection+']'
-        elif keyval_match:
-          # a key/value data line
-          keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
-          if keyval_new_match:
-            key = keyval_new_match.group(1)
-            value = keyval_new_match.group(2)
-            if not args.stdout: sys.stdout.write("(new) ")
-          else:
-            key = keyval_match.group(1)
-            value = keyval_match.group(2)
-            if not args.stdout: sys.stdout.write("(old) ")
-          if ';' in value:
-            # multiple values?
-            value = [elem.strip() for elem in value.split(';')]
-          if not args.stdout:
-            print "{}:\t{}".format(key, value)
-        elif '=' * 20 in line or '-' * 20 in line:
-          # heading divider
-          pass
-        else:
-          # Test for special case lines
-          qln_match = re.search(QLN_LINE_REGEX, line)
-          cc_line_match = re.search(CC_LINE_REGEX, line)
-          url_line_match = re.search(URL_LINE_REGEX, line)
-          site_last_match = re.search(SITE_REGEX, last_line)
-          if url_line_match and site_last_match:
-            # URL on line after entry heading
-            site_alias = site_last_match.group(1)
-            site = url_line_match.group(1)
-            if not args.stdout: print "{}:\n({}):".format(site, site_alias)
-          elif qln_match:
-            # "QLN"-type shorthand
-            qln = qln_match.group(1)
-            if not args.stdout: print "QLN: "+str(qln)
-          elif cc_line_match:
-            # "stored credit card" note
-            if not args.stdout: print "*stored credit card*"
-          else:
-            # Unrecognized.
-            # If it looks suspiciously similar to an entry heading we didn't
-            # catch, invalidate the current entry state.
-            # (This is any line that doesn't start with whitespace.)
-            if re.search(r'^\S', line):
-              site = None
-              subsection = None
-            warn('Unrecognized line', line, level)
+            # Test for special case lines
+            qln_match = re.search(QLN_LINE_REGEX, line)
+            cc_line_match = re.search(CC_LINE_REGEX, line)
+            url_line_match = re.search(URL_LINE_REGEX, line)
+            site_last_match = re.search(SITE_REGEX, last_line)
+            if url_line_match and site_last_match:
+              # URL on line after entry heading
+              entry.site_alias = site_last_match.group(1)
+              entry.site = url_line_match.group(1)
+            elif qln_match:
+              # "QLN"-type shorthand
+              self._add_qln(entry, account, subsection)
+            elif cc_line_match:
+              # "stored credit card" note
+              entry.add_keyval('stored credit card', True, account, subsection)
+            else:
+              # Unrecognized.
+              message = 'Unrecognized line.'
+              self.errors.append(
+                {'message':message, 'line':line_num, 'data':line}
+              )
 
-      last_line = line
+        last_line = line
+
+    if top_level is None:
+      message = 'Found no top-level section headings.'
+      self.errors.append(
+        {'message':message, 'line':None, 'data':None}
+      )
+
+    return entries
+
+  def _add_qln(self, entry, account, subsection):
+    entry.add_keyval('username', 'qwerty0', account, subsection)
+    entry.add_keyval('password', 'least secure', account, subsection)
+    entry.add_keyval('email', 'nmapsy', account, subsection)
 
 
-  if top_level is None:
-    warn('Found no top-level section headings.', level=level)
+#TODO: Make this inherit from OrderedDict itself
+class AccountsEntry(object):
+  def __init__(self):
+    self._keyvals = collections.OrderedDict()
+    self.site = None
+    self.site_alias = None
+    self.site_url = None
 
-#TODO: make "warn" object to store level, total warnings, and even current line
-def warn(message, line=None, level='warn'):
-  assert level in ['silent', 'stdout', 'warn', 'die']
-  if line is None:
-    warning = message+'\n'
-  else:
-    warning = message+':\n'+line+'\n'
-  if level == 'stdout':
-    sys.stdout.write(warning)
-  if level == 'silent':
-    return
-  if level == 'warn':
-    sys.stderr.write('Warning: '+warning)
-  elif level == 'die':
-    sys.stderr.write('Error: '+warning)
-    sys.exit(1)
+  def add_keyval(self, key, value, account=0, subsection='default'):
+    self._keyvals[(key, account, subsection)] = value
 
-
-def fail(message):
-  sys.stderr.write(message+"\n")
-  sys.exit(1)
-
-if __name__ == '__main__':
-  main()
+  def get_val(self, key, account=0, subsection='default'):
+    return self._keyvals[(key, account, subsection)]
