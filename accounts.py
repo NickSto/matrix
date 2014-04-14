@@ -74,21 +74,14 @@ def main():
     account = entry.default_account
     section = entry.default_section
     #TODO: don't print default account or section heading
-    if account in entry.accounts():
+    for account in entry.accounts():
       print "  {account"+str(account)+"}"
-      print "    ["+section+"]"
-    for (key, value) in entry.items():
-      if account != key[0]:
-        account = key[0]
-        print "  {account"+str(account)+"}"
-        section = key[1]
+      for section in entry.sections(account):
         print "    ["+section+"]"
-      if section != key[1]:
-        section = key[1]
-        print "    ["+section+"]"
-      if isinstance(value, list) or isinstance(value, tuple):
-        value = '; '.join(map(str, value))
-      print "\t{}:\t{}".format(key[2], value)
+        for (key, value) in entry.items(account=account, section=section):
+          if isinstance(value, list) or isinstance(value, tuple):
+            value = '; '.join(map(str, value))
+          print "\t{}:\t{}".format(key[2], value)
 
 
 def fail(message):
