@@ -76,7 +76,6 @@ def main():
       print "{} ({}):".format(entry.site, entry.site_alias)
     account = entry.default_account
     section = entry.default_section
-    #TODO: don't print default account or section heading
     for account in entry.accounts():
       if account != entry.default_account:
         print "  {account"+str(account)+"}"

@@ -4,31 +4,33 @@
 #      (account, section, key, value).
 #TODO: Note whether a line conformed to the new standards or not (attribute).
 #TODO: Strict mode parsing.
-#TODO: Maybe a new type of line for binary flags, like "**credit card**"
-#TODO: **not registered**
 #TODO: Deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
 #TODO: Recognize section names like "[for credit card]" and tag appropriately
 #TODO: Deal with "[deleted] notes"
 #      For sites or accounts that are deleted, just add a 'deleted' key = True
+#TOOD: Ideally, this should allow preservation of the original formatting of the
+#      file, including all unrecognized lines. Then I could use this to actually
+#      edit the file and overwrite it without losing any information.
 from __future__ import division
 import re
 import collections
 
-TOP_LEVEL_REGEX = r'^>>([^>]+)\s*$'
+TOP_LEVEL_REGEX     = r'^>>([^>]+)\s*$'
 SUPER_SECTION_REGEX = r'^>([^>]+)\s*$'
-SITE_REGEX = r'^(\S(?:.*\S)):\s*$'
-SITE_URL_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
-SITE_ALIAS_REGEX = r' \(([^)]+)\):\s*$'
-ACCOUNT_NUM_REGEX = r'^\s+{account ?(\d+)}\s*$' # new account num format
-SECTION_REGEX1 = r'^\s+\[([\w#. -]+)\]\s*$'
-SECTION_REGEX2 = r'^ {3,5}(\S(?:.*\S)):\s*$'
-KEYVAL_REGEX = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
-KEYVAL_NEW_REGEX = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
+SITE_REGEX          = r'^(\S(?:.*\S)):\s*$'
+SITE_URL_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
+SITE_ALIAS_REGEX    = r' \(([^)]+)\):\s*$'
+ACCOUNT_NUM_REGEX   = r'^\s+{account ?(\d+)}\s*$' # new account num format
+SECTION_REGEX1      = r'^\s+\[([\w#. -]+)\]\s*$'
+SECTION_REGEX2      = r'^ {3,5}(\S(?:.*\S)):\s*$'
+KEYVAL_REGEX        = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
+KEYVAL_NEW_REGEX    = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
+FLAG_REGEX          = r'^\s+\*\*([^*]+)\*\*\s*$'
 # Special cases
-URL_LINE_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
-QLN_LINE_REGEX = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
-CC_LINE_REGEX = r'\s*\*.*credit card.*\*\s*'
+URL_LINE_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
+QLN_LINE_REGEX      = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
+CC_LINE_REGEX       = r'\s*\*.*credit card.*\*\s*'
 
 
 class AccountsReader(list):
@@ -115,6 +117,7 @@ class AccountsReader(list):
           section_match1 = re.search(SECTION_REGEX1, line)
           section_match2 = re.search(SECTION_REGEX2, line)
           keyval_match = re.search(KEYVAL_REGEX, line)
+          flag_match = re.search(FLAG_REGEX, line)
           if account_num_match:
             account = int(account_num_match.group(1))
             section = 'default'
@@ -128,21 +131,18 @@ class AccountsReader(list):
             # a key/value data line
             keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
             if keyval_new_match:
-              key = keyval_new_match.group(1)
+              field = keyval_new_match.group(1)
               value = keyval_new_match.group(2)
             else:
-              key = keyval_match.group(1)
+              field = keyval_match.group(1)
               value = keyval_match.group(2)
             if ';' in value:
               # multiple values?
               value = [elem.strip() for elem in value.split(';')]
-            if (account, section, key) in entry:
-              message = 'Duplicate key, section, or account'
-              self.errors.append(
-                {'message':message, 'line':line_num, 'data':line}
-              )
-            else:
-              entry[(account, section, key)] = value
+            self._safe_add(entry, (account, section, field), value)
+          elif flag_match:
+            field = flag_match.group(1)
+            self._safe_add(entry, (account, section, field), True)
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -161,7 +161,7 @@ class AccountsReader(list):
               self._add_qln(entry, account, section)
             elif cc_line_match:
               # "stored credit card" note
-              entry[(account, section, 'stored credit card')] = True
+              entry[(account, section, 'used credit card')] = True
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
@@ -187,12 +187,31 @@ class AccountsReader(list):
       )
 
 
+  def _safe_add(self, entry, key, value):
+    """Add key/value only if it doesn't already exist in the entry.
+    If it does, don't overwrite it and add an error instead."""
+    if key in entry:
+      message = 'Duplicate key, section, or account'
+      self.errors.append(
+        {'message':message, 'line':line_num, 'data':line}
+      )
+      return False
+    else:
+      entry[key] = value
+      return True
+
+
   def _add_qln(self, entry, account, section):
     entry[(account, section, 'username')] = 'qwerty0'
     entry[(account, section, 'password')] = 'least secure'
     entry[(account, section, 'email')] = 'nmapsy'
 
 
+#TODO: Keep the actual keys (or hell, all the data) in self._accounts, by
+#      making each account an OrderedDict mapping sections to either lists of
+#      fields or OrderedDicts mapping fields to values (to store all the data).
+#      This is what will allow looking up the data in an account or section
+#      without reading through all the keys.
 class AccountsEntry(collections.OrderedDict):
   """Keys must be either the field name string or a tuple of the account number,
   the section name, and the field name."""
