@@ -3,7 +3,7 @@
 #      e.g. (account), (account, section), (account, section, key), or
 #      (account, section, key, value).
 #TODO: Note whether a line conformed to the new standards or not (attribute).
-#TODO: Strict mode parsing.
+#TODO: Finish strict mode.
 #TODO: Deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
 #TODO: Recognize section names like "[for credit card]" and tag appropriately
@@ -33,13 +33,23 @@ QLN_LINE_REGEX      = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
 CC_LINE_REGEX       = r'\s*\*.*credit card.*\*\s*'
 
 
+"""
+Strict mode - current rules:
+Ignore old-style section lines.
+Don't do fuzzy credit card line matching.
+Ignore QLN lines.
+"""
+
+
 class AccountsReader(list):
-  def __init__(self, filepath):
+  def __init__(self, filepath, strict=False):
+    if strict:
+      raise NotImplementedError
     super(AccountsReader, self).__init__()
     self.errors = []
-    self._parse_accounts(filepath)
+    self._parse_accounts(filepath, strict)
 
-  def _parse_accounts(self, filepath):
+  def _parse_accounts(self, filepath, strict):
     """The parsing engine itself."""
     line_num = 0
     last_line = None
@@ -126,7 +136,13 @@ class AccountsReader(list):
             if section_match1:
               section = section_match1.group(1)
             else:
-              section = section_match2.group(1)
+              if strict:
+                message = 'Strict mode error: old section line format'
+                self.errors.append(
+                  {'message':message, 'line':line_num, 'data':line}
+                )
+              else:
+                section = section_match2.group(1)
           elif keyval_match:
             # a key/value data line
             keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
@@ -158,10 +174,22 @@ class AccountsReader(list):
               entry.site = url_line_match.group(1)
             elif qln_match:
               # "QLN"-type shorthand
-              self._add_qln(entry, account, section)
+              if strict:
+                message = 'Strict mode error: QLN line'
+                self.errors.append(
+                  {'message':message, 'line':line_num, 'data':line}
+                )
+              else:
+                self._add_qln(entry, account, section)
             elif cc_line_match:
               # "stored credit card" note
-              entry[(account, section, 'used credit card')] = True
+              if strict:
+                message = 'Strict mode error: nonconforming credit card line'
+                self.errors.append(
+                  {'message':message, 'line':line_num, 'data':line}
+                )
+              else:
+                entry[(account, section, 'used credit card')] = True
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
