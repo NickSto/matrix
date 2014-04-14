@@ -17,8 +17,7 @@ ACCOUNTS_FILE_DEFAULT = 'annex/Info/reference, notes/accounts.txt'
 
 def main():
 
-  parser = argparse.ArgumentParser(
-    description=DESCRIPTION, usage=USAGE, epilog=EPILOG)
+  parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=EPILOG)
   parser.set_defaults(**OPT_DEFAULTS)
 
   parser.add_argument('accounts_file', nargs='?',

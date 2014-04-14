@@ -1,16 +1,12 @@
 #!/usr/bin/env python
-#TODO: continue after format errors
+#TODO: Allow attributes to be set on individual values.
 #TODO: deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
-#TODO: deal with "[deleted]" and binary flags in general
+#TODO: Deal with "[deleted] notes"
+#      For sites or accounts that are deleted, just add a 'deleted' key = True
 from __future__ import division
 import re
 import collections
-
-OPT_DEFAULTS = {'validate':True}
-USAGE = "%(prog)s [options]"
-DESCRIPTION = """Parse the accounts.txt file."""
-EPILOG = """"""
 
 TOP_LEVEL_REGEX = r'^>>([^>]+)\s*$'
 SUPER_SECTION_REGEX = r'^>([^>]+)\s*$'
@@ -205,9 +201,9 @@ class AccountsEntry(collections.OrderedDict):
     full_key = self.get_full_key(key)
     return collections.OrderedDict.__getitem__(self, key)
 
-  def __setitem__(self, key, val):
+  def __setitem__(self, key, value):
     full_key = self.get_full_key(key)
-    collections.OrderedDict.__setitem__(self, key, val)
+    collections.OrderedDict.__setitem__(self, key, value)
 
   def __contains__(self, key):
     full_key = self.get_full_key(key)
