@@ -99,7 +99,7 @@ class AccountsReader(list):
                 entry.site = site_old.replace(' ('+entry.site_alias+')', '')
                 if entry.site == site_old:
                   message = ('Failed to remove alias "'+entry.site_alias+
-                    '" from site name "'+entry.site+'".')
+                    '" from site name "'+entry.site+'"')
                   self.errors.append(
                     {'message':message, 'line':line_num, 'data':line}
                   )
@@ -140,7 +140,13 @@ class AccountsReader(list):
             if ';' in value:
               # multiple values?
               value = [elem.strip() for elem in value.split(';')]
-            entry[(key, account, subsection)] = value
+            if (key, account, subsection) in entry:
+              message = 'Duplicate key, subsection, or account'
+              self.errors.append(
+                {'message':message, 'line':line_num, 'data':line}
+              )
+            else:
+              entry[(key, account, subsection)] = value
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -165,13 +171,13 @@ class AccountsReader(list):
               # an unrecognized entry header. That means we no longer know which
               # entry we're in.
               entry = None
-              message = 'Line is like an entry header, but malformed.'
+              message = 'Line is like an entry header, but malformed'
               self.errors.append(
                 {'message':message, 'line':line_num, 'data':line}
               )
             else:
               # Unrecognized.
-              message = 'Unrecognized line.'
+              message = 'Unrecognized line'
               self.errors.append(
                 {'message':message, 'line':line_num, 'data':line}
               )
@@ -179,7 +185,7 @@ class AccountsReader(list):
         last_line = line
 
     if top_level is None:
-      message = 'Found no top-level section headings.'
+      message = 'Found no top-level section headings'
       self.errors.append(
         {'message':message, 'line':None, 'data':None}
       )
@@ -191,10 +197,55 @@ class AccountsReader(list):
     entry[('email', account, subsection)] = 'nmapsy'
 
 
-#TODO: Special handling of entry['foo'] with default accounts, subsections
 class AccountsEntry(collections.OrderedDict):
+  """Keys must be either the field name string or a tuple of the field name, the
+  account number, and the subsection name."""
   def __init__(self):
     super(AccountsEntry, self).__init__()
     self.site = None
     self.site_alias = None
     self.site_url = None
+    self.default_account = 0
+    self.default_subsection = 'default'
+
+  def __getitem__(self, key):
+    full_key = self.get_full_key(key)
+    return collections.OrderedDict.__getitem__(self, key)
+
+  def __setitem__(self, key, val):
+    full_key = self.get_full_key(key)
+    collections.OrderedDict.__setitem__(self, key, val)
+
+  def __contains__(self, key):
+    full_key = self.get_full_key(key)
+    return collections.OrderedDict.__contains__(self, key)
+
+  def get_full_key(self, key):
+    """Return a proper, full key for indexing the dict.
+    If the input is a string, assume the default account and subsection.
+    If it's a proper 3-tuple, return it unaltered.
+    If it's neither, throw an assertion error."""
+    #TODO: allow other tuple-like types?
+    is_str = isinstance(key, basestring)
+    is_tuple = isinstance(key, tuple) and len(key) == 3
+    assert is_str or is_tuple, '"key" must either be a str or tuple of len 3.'
+    if is_str:
+      key = (key, self.default_account, self.default_subsection)
+    return key
+
+  def accounts(self):
+    """Return a tuple of the account numbers in the entry."""
+    accounts = set()
+    for (key, account, subsection) in self.keys():
+      accounts.add(account)
+    return tuple(accounts)
+
+  def subsections(self, this_account):
+    """Return a tuple of the subsections in the account."""
+    subsections = set()
+    for (key, account, subsection) in self.keys():
+      if account == this_account:
+        subsections.add(subsection)
+    return tuple(subsections)
+
+  #TODO: a method to get data by account and/or subsection
