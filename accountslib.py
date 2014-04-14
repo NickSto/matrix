@@ -203,18 +203,29 @@ class AccountsEntry(collections.OrderedDict):
     self.site_url = None
     self.default_account = 0
     self.default_section = 'default'
+    # Keep track of the accounts and sections that exist in this entry
+    # It's a dict of accounts mapped to lists of sections. It looks like:
+    # {0:['default', 'old'], 1:['default']}
+    self._accounts = collections.OrderedDict()
 
   def __getitem__(self, key):
     full_key = self.get_full_key(key)
-    return collections.OrderedDict.__getitem__(self, key)
+    return collections.OrderedDict.__getitem__(self, full_key)
 
   def __setitem__(self, key, value):
-    full_key = self.get_full_key(key)
-    collections.OrderedDict.__setitem__(self, key, value)
+    (account, section, field) = self.get_full_key(key)
+    sections = self._accounts.get(account, [])
+    if section not in sections:
+      sections.append(section)
+    self._accounts[account] = sections
+    collections.OrderedDict.__setitem__(self, (account, section, field), value)
 
   def __contains__(self, key):
     full_key = self.get_full_key(key)
-    return collections.OrderedDict.__contains__(self, key)
+    return collections.OrderedDict.__contains__(self, full_key)
+
+  def update(self):
+    raise NotImplementedError
 
   def get_full_key(self, key):
     """Return a proper, full key for indexing the dict.
@@ -240,25 +251,27 @@ class AccountsEntry(collections.OrderedDict):
 
   def accounts(self):
     """Return a tuple of the account numbers in the entry."""
-    accounts = set()
-    for (account, section, field) in self.keys():
-      accounts.add(account)
-    return tuple(accounts)
+    return tuple(self._accounts.keys())
 
-  def sections(self, this_account):
-    """Return a tuple of the sections in the account."""
-    sections = set()
-    for (account, section, field) in self.keys():
-      if account == this_account:
-        sections.add(section)
-    return tuple(sections)
+  def sections(self, account):
+    """Return a tuple of the sections in the account.
+    Returns () if the account doesn't exist."""
+    return tuple(self._accounts.get(account, ()))
 
-  # def keys(self, account=None, section=None):
-  #   if account is None and section is None:
-  #     return collections.OrderedDict.keys(self)
+  def keys(self, account=None, section=None):
+    if account is None and section is None:
+      return collections.OrderedDict.keys(self)
+    keys = []
+    for key in collections.OrderedDict.keys(self):
+      if account == key[0] and (section == key[1] or section is None):
+        keys.append(key)
+    return keys
 
-  #   keys = []
-  #   for key in collections.OrderedDict.keys(self):
-  #     if account == key[1]
-
-  #TODO: a method to get data by account and/or section
+  def items(self, account=None, section=None):
+    if account is None and section is None:
+      return collections.OrderedDict.items(self)
+    items = []
+    # use .keys() implementation to handle which items to get
+    for key in self.keys(account=account, section=section):
+      items.append((key, self[key]))
+    return items
