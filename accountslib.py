@@ -1,7 +1,14 @@
 #!/usr/bin/env python
-#TODO: Allow attributes to be set on individual values.
-#TODO: deal with comments at the ends of lines  # like this
+#TODO: Attributes. Probably best to allow them to be set on any unique "thing".
+#      e.g. (account), (account, section), (account, section, key), or
+#      (account, section, key, value).
+#TODO: Note whether a line conformed to the new standards or not (attribute).
+#TODO: Strict mode parsing.
+#TODO: Maybe a new type of line for binary flags, like "**credit card**"
+#TODO: **not registered**
+#TODO: Deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
+#TODO: Recognize section names like "[for credit card]" and tag appropriately
 #TODO: Deal with "[deleted] notes"
 #      For sites or accounts that are deleted, just add a 'deleted' key = True
 from __future__ import division
@@ -66,7 +73,7 @@ class AccountsReader(list):
             continue
 
         # Parse 'online' top-level section (the one with the account info)
-        if top_level == 'online' and super_section is None:
+        if top_level == 'online' and super_section == 'accounts':
 
           # Are we at the start of an entry?
           site_match = re.search(SITE_REGEX, line)
@@ -129,13 +136,13 @@ class AccountsReader(list):
             if ';' in value:
               # multiple values?
               value = [elem.strip() for elem in value.split(';')]
-            if (key, account, section) in entry:
+            if (account, section, key) in entry:
               message = 'Duplicate key, section, or account'
               self.errors.append(
                 {'message':message, 'line':line_num, 'data':line}
               )
             else:
-              entry[(key, account, section)] = value
+              entry[(account, section, key)] = value
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -154,7 +161,7 @@ class AccountsReader(list):
               self._add_qln(entry, account, section)
             elif cc_line_match:
               # "stored credit card" note
-              entry[('stored credit card', account, section)] = True
+              entry[(account, section, 'stored credit card')] = True
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
@@ -181,14 +188,14 @@ class AccountsReader(list):
 
 
   def _add_qln(self, entry, account, section):
-    entry[('username', account, section)] = 'qwerty0'
-    entry[('password', account, section)] = 'least secure'
-    entry[('email', account, section)] = 'nmapsy'
+    entry[(account, section, 'username')] = 'qwerty0'
+    entry[(account, section, 'password')] = 'least secure'
+    entry[(account, section, 'email')] = 'nmapsy'
 
 
 class AccountsEntry(collections.OrderedDict):
-  """Keys must be either the field name string or a tuple of the field name, the
-  account number, and the section name."""
+  """Keys must be either the field name string or a tuple of the account number,
+  the section name, and the field name."""
   def __init__(self):
     super(AccountsEntry, self).__init__()
     self.site = None
@@ -216,25 +223,42 @@ class AccountsEntry(collections.OrderedDict):
     If it's neither, throw an assertion error."""
     #TODO: allow other tuple-like types?
     is_str = isinstance(key, basestring)
-    is_tuple = isinstance(key, tuple) and len(key) == 3
-    assert is_str or is_tuple, '"key" must either be a str or tuple of len 3.'
+    is_proper_tuple = (
+      isinstance(key, tuple) and len(key) == 3
+      and isinstance(key[0], int)
+      and isinstance(key[1], basestring)
+      and isinstance(key[2], basestring)
+    )
+    assert is_str or is_proper_tuple, (
+      '"key" must either be a str or tuple of (account, section, fieldname).'
+    )
     if is_str:
-      key = (key, self.default_account, self.default_section)
-    return key
+      full_key = (self.default_account, self.default_section, key)
+    else:
+      full_key = key
+    return full_key
 
   def accounts(self):
     """Return a tuple of the account numbers in the entry."""
     accounts = set()
-    for (key, account, section) in self.keys():
+    for (account, section, field) in self.keys():
       accounts.add(account)
     return tuple(accounts)
 
   def sections(self, this_account):
     """Return a tuple of the sections in the account."""
     sections = set()
-    for (key, account, section) in self.keys():
+    for (account, section, field) in self.keys():
       if account == this_account:
         sections.add(section)
     return tuple(sections)
+
+  # def keys(self, account=None, section=None):
+  #   if account is None and section is None:
+  #     return collections.OrderedDict.keys(self)
+
+  #   keys = []
+  #   for key in collections.OrderedDict.keys(self):
+  #     if account == key[1]
 
   #TODO: a method to get data by account and/or section
