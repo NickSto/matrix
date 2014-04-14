@@ -12,27 +12,20 @@ USAGE = "%(prog)s [options]"
 DESCRIPTION = """Parse the accounts.txt file."""
 EPILOG = """"""
 
-ACCOUNTS_FILE_DEFAULT = 'annex/Info/reference, notes/accounts.txt'
 TOP_LEVEL_REGEX = r'^>>([^>]+)\s*$'
-SECTION_REGEX = r'^>([^>]+)\s*$'
+SUPER_SECTION_REGEX = r'^>([^>]+)\s*$'
 SITE_REGEX = r'^(\S(?:.*\S)):\s*$'
 SITE_URL_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
 SITE_ALIAS_REGEX = r' \(([^)]+)\):\s*$'
 ACCOUNT_NUM_REGEX = r'^\s+{account ?(\d+)}\s*$' # new account num format
-SUBSECTION_REGEX1 = r'^\s*\[([\w#. -]+)\]\s*$'
-SUBSECTION_REGEX2 = r'^ {3,5}(\S(?:.*\S)):\s*$'
+SECTION_REGEX1 = r'^\s+\[([\w#. -]+)\]\s*$'
+SECTION_REGEX2 = r'^ {3,5}(\S(?:.*\S)):\s*$'
 KEYVAL_REGEX = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
 KEYVAL_NEW_REGEX = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
 # Special cases
 URL_LINE_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
 QLN_LINE_REGEX = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
 CC_LINE_REGEX = r'\s*\*.*credit card.*\*\s*'
-
-
-class FormatError(Exception):
-  def __init__(self, message=None):
-    if message:
-      Exception.__init__(self, message)
 
 
 class AccountsReader(list):
@@ -46,7 +39,7 @@ class AccountsReader(list):
     line_num = 0
     last_line = None
     top_level = None
-    section = None
+    super_section = None
     entry = None
     with open(filepath, 'rU') as filehandle:
       for line_raw in filehandle:
@@ -70,14 +63,14 @@ class AccountsReader(list):
         # At a 2nd-level section heading?
         # (Previous line must contain at least 20 "-"s in a row.)
         if last_line is not None and '-' * 20 in last_line:
-          section_match = re.search(SECTION_REGEX, line)
-          if section_match:
-            section = section_match.group(1).lower()
+          super_section_match = re.search(SUPER_SECTION_REGEX, line)
+          if super_section_match:
+            super_section = super_section_match.group(1).lower()
             last_line = line
             continue
 
         # Parse 'online' top-level section (the one with the account info)
-        if top_level == 'online' and section is None:
+        if top_level == 'online' and super_section is None:
 
           # Are we at the start of an entry?
           site_match = re.search(SITE_REGEX, line)
@@ -104,7 +97,7 @@ class AccountsReader(list):
                     {'message':message, 'line':line_num, 'data':line}
                   )
             account = 0
-            subsection = 'default'
+            section = 'default'
             last_line = line
             continue
 
@@ -116,18 +109,18 @@ class AccountsReader(list):
 
           # What kind of data line are we on?
           account_num_match = re.search(ACCOUNT_NUM_REGEX, line)
-          subsection_match1 = re.search(SUBSECTION_REGEX1, line)
-          subsection_match2 = re.search(SUBSECTION_REGEX2, line)
+          section_match1 = re.search(SECTION_REGEX1, line)
+          section_match2 = re.search(SECTION_REGEX2, line)
           keyval_match = re.search(KEYVAL_REGEX, line)
           if account_num_match:
             account = int(account_num_match.group(1))
-            subsection = 'default'
-          elif subsection_match1 or subsection_match2:
-            # start of subsection
-            if subsection_match1:
-              subsection = subsection_match1.group(1)
+            section = 'default'
+          elif section_match1 or section_match2:
+            # start of section
+            if section_match1:
+              section = section_match1.group(1)
             else:
-              subsection = subsection_match2.group(1)
+              section = section_match2.group(1)
           elif keyval_match:
             # a key/value data line
             keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
@@ -140,13 +133,13 @@ class AccountsReader(list):
             if ';' in value:
               # multiple values?
               value = [elem.strip() for elem in value.split(';')]
-            if (key, account, subsection) in entry:
-              message = 'Duplicate key, subsection, or account'
+            if (key, account, section) in entry:
+              message = 'Duplicate key, section, or account'
               self.errors.append(
                 {'message':message, 'line':line_num, 'data':line}
               )
             else:
-              entry[(key, account, subsection)] = value
+              entry[(key, account, section)] = value
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -162,10 +155,10 @@ class AccountsReader(list):
               entry.site = url_line_match.group(1)
             elif qln_match:
               # "QLN"-type shorthand
-              self._add_qln(entry, account, subsection)
+              self._add_qln(entry, account, section)
             elif cc_line_match:
               # "stored credit card" note
-              entry[('stored credit card', account, subsection)] = True
+              entry[('stored credit card', account, section)] = True
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
@@ -191,22 +184,22 @@ class AccountsReader(list):
       )
 
 
-  def _add_qln(self, entry, account, subsection):
-    entry[('username', account, subsection)] = 'qwerty0'
-    entry[('password', account, subsection)] = 'least secure'
-    entry[('email', account, subsection)] = 'nmapsy'
+  def _add_qln(self, entry, account, section):
+    entry[('username', account, section)] = 'qwerty0'
+    entry[('password', account, section)] = 'least secure'
+    entry[('email', account, section)] = 'nmapsy'
 
 
 class AccountsEntry(collections.OrderedDict):
   """Keys must be either the field name string or a tuple of the field name, the
-  account number, and the subsection name."""
+  account number, and the section name."""
   def __init__(self):
     super(AccountsEntry, self).__init__()
     self.site = None
     self.site_alias = None
     self.site_url = None
     self.default_account = 0
-    self.default_subsection = 'default'
+    self.default_section = 'default'
 
   def __getitem__(self, key):
     full_key = self.get_full_key(key)
@@ -222,7 +215,7 @@ class AccountsEntry(collections.OrderedDict):
 
   def get_full_key(self, key):
     """Return a proper, full key for indexing the dict.
-    If the input is a string, assume the default account and subsection.
+    If the input is a string, assume the default account and section.
     If it's a proper 3-tuple, return it unaltered.
     If it's neither, throw an assertion error."""
     #TODO: allow other tuple-like types?
@@ -230,22 +223,22 @@ class AccountsEntry(collections.OrderedDict):
     is_tuple = isinstance(key, tuple) and len(key) == 3
     assert is_str or is_tuple, '"key" must either be a str or tuple of len 3.'
     if is_str:
-      key = (key, self.default_account, self.default_subsection)
+      key = (key, self.default_account, self.default_section)
     return key
 
   def accounts(self):
     """Return a tuple of the account numbers in the entry."""
     accounts = set()
-    for (key, account, subsection) in self.keys():
+    for (key, account, section) in self.keys():
       accounts.add(account)
     return tuple(accounts)
 
-  def subsections(self, this_account):
-    """Return a tuple of the subsections in the account."""
-    subsections = set()
-    for (key, account, subsection) in self.keys():
+  def sections(self, this_account):
+    """Return a tuple of the sections in the account."""
+    sections = set()
+    for (key, account, section) in self.keys():
       if account == this_account:
-        subsections.add(subsection)
-    return tuple(subsections)
+        sections.add(section)
+    return tuple(sections)
 
-  #TODO: a method to get data by account and/or subsection
+  #TODO: a method to get data by account and/or section

@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-#TODO: turn into module
-#TODO: deal with comments at the ends of lines  # like this
-#      but somehow allow in things like "account #:" or "PIN#"
-#TODO: deal with "[deleted]" and binary flags in general
 from __future__ import division
-import re
 import os
 import sys
 import argparse
@@ -12,24 +7,13 @@ import accountslib
 
 OPT_DEFAULTS = {'validate':True}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = """Parse the accounts.txt file."""
-EPILOG = """"""
+DESCRIPTION = """Parse the accounts.txt file.
+Stderr will print lines that violate the format. Stdout will print the account
+data in the new, proper format."""
+EPILOG = """N.B.: Binary flags (like for "**used credit card**") are not
+currently output, though some are parsed properly with no formatting errors."""
 
 ACCOUNTS_FILE_DEFAULT = 'annex/Info/reference, notes/accounts.txt'
-TOP_LEVEL_REGEX = r'^>>([^>]+)\s*$'
-SECTION_REGEX = r'^>([^>]+)\s*$'
-SITE_REGEX = r'^(\S(?:.*\S)):\s*$'
-SITE_URL_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
-SITE_ALIAS_REGEX = r' \(([^)]+)\):\s*$'
-ACCOUNT_NUM_REGEX = r'^\s+{account ?(\d+)}\s*$' # new account num format
-SUBSECTION_REGEX1 = r'^\s*\[([\w#. -]+)\]\s*$'
-SUBSECTION_REGEX2 = r'^ {3,5}(\S(?:.*\S)):\s*$'
-KEYVAL_REGEX = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
-KEYVAL_NEW_REGEX = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
-# Special cases
-URL_LINE_REGEX = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
-QLN_LINE_REGEX = r'^\s+([A-Z]{3})(?:\s+\S.*$|\s*$)'
-CC_LINE_REGEX = r'\s*\*.*credit card.*\*\s*'
 
 def main():
 
@@ -71,7 +55,7 @@ def main():
     if error['data'] is None:
       output = '{message}.\n'.format(**error)
     else:
-      output = '{message}:\n{data}\n'.format(**error)
+      output = '{message}:\n{line}:{data}\n'.format(**error)
     # perform appropriate action
     if level == 'stdout':
       sys.stdout.write(output)
@@ -89,19 +73,21 @@ def main():
   for entry in accounts:
     print entry.site+':'
     account = entry.default_account
-    subsection = entry.default_subsection
+    section = entry.default_section
     if account in entry.accounts():
       print "  {account"+str(account)+"}"
-      print "    ["+subsection+"]"
+      print "    ["+section+"]"
     for (key, value) in entry.items():
       if account != key[1]:
         account = key[1]
         print "  {account"+str(account)+"}"
-        subsection = key[2]
-        print "    ["+subsection+"]"
-      if subsection != key[2]:
-        subsection = key[2]
-        print "    ["+subsection+"]"
+        section = key[2]
+        print "    ["+section+"]"
+      if section != key[2]:
+        section = key[2]
+        print "    ["+section+"]"
+      if isinstance(value, list) or isinstance(value, tuple):
+        value = '; '.join(map(str, value))
       print "\t{}:\t{}".format(key[0], value)
 
 
