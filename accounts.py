@@ -70,14 +70,19 @@ def main():
     sys.exit(0)
 
   for entry in accounts:
-    print entry.site+':'
+    if entry.site_alias is None:
+      print "{}:".format(entry.site)
+    else:
+      print "{} ({}):".format(entry.site, entry.site_alias)
     account = entry.default_account
     section = entry.default_section
     #TODO: don't print default account or section heading
     for account in entry.accounts():
-      print "  {account"+str(account)+"}"
+      if account != entry.default_account:
+        print "  {account"+str(account)+"}"
       for section in entry.sections(account):
-        print "    ["+section+"]"
+        if section != entry.default_section:
+          print "    ["+section+"]"
         for (key, value) in entry.items(account=account, section=section):
           if isinstance(value, list) or isinstance(value, tuple):
             value = '; '.join(map(str, value))
