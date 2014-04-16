@@ -82,10 +82,22 @@ def main():
       for section in entry.sections(account):
         if section != entry.default_section:
           print "    ["+section+"]"
-        for (key, value) in entry.items(account=account, section=section):
-          if isinstance(value, list) or isinstance(value, tuple):
-            value = '; '.join(map(str, value))
-          print "\t{}:\t{}".format(key[2], value)
+        for (key, values) in entry.items(account=account, section=section):
+          print "\t{}:\t{}".format(key[2], format_values(values))
+
+
+def format_values(values):
+  value_strs = []
+  for value in values:
+    flags = values[value]
+    if len(flags) == 0:
+      value_strs.append(str(value))
+    else:
+      print "found flags for "+value
+      flag_strs = map(lambda x: '**'+x+'**', flags)
+      flags_str = ' '.join(flag_strs)
+      value_strs.append(str(value)+' '+flags_str)
+  return '; '.join(value_strs)
 
 
 def fail(message):
