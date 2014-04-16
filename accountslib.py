@@ -2,6 +2,12 @@
 #TODO: Attributes. Probably best to allow them to be set on any unique "thing".
 #      e.g. (account), (account, section), (account, section, key), or
 #      (account, section, key, value).
+#TODO: Decide on a format for entry titles that allows for normal names, urls,
+#      and even lists of urls (like LastPass equivalent domains).
+#      I'm thinking it might be okay to just add the url on a second, non-
+#      indented line. And even as many urls as you want. Matching a url- or
+#      domain-like regex might be a unique enough pattern.
+#      Also, allow the site title to be one of the urls in the list.
 #TODO: Note whether a line conformed to the new standards or not (attribute).
 #TODO: Finish strict mode.
 #TODO: Deal with comments at the ends of lines  # like this
@@ -24,13 +30,31 @@ SITE_ALIAS_REGEX    = r' \(([^)]+)\):\s*$'
 ACCOUNT_NUM_REGEX   = r'^\s+{account ?(\d+)}\s*$' # new account num format
 SECTION_REGEX1      = r'^\s+\[([\w#. -]+)\]\s*$'
 SECTION_REGEX2      = r'^ {3,5}(\S(?:.*\S)):\s*$'
-KEYVAL_REGEX        = r'^\s+(\S(?:.*\S)?):\s*(\S.*)$'
-KEYVAL_NEW_REGEX    = r'^\t(\S(?:.*\S)?):\t+(\S(?:.*\S)?)\s*$'
-FLAG_REGEX          = r'^\s+\*\*([^*]+)\*\*\s*$'
+KEYVAL_REGEX        = r'^\s+([^\s*](?:[^:]*\S)?):\s*(\S.*)$'
+KEYVAL_NEW_REGEX    = r'^\t(\S(?:[^:]*\S)?):\t+(\S(?:.*\S)?)\s*$'
+FLAG_LINE_REGEX     = r'^\s+\*\*([^*]+)\*\*\s*$'
+VALUE_REGEX         = r'^\s*(\S(?:.*?\S)?)\s+\*\*'
+FLAG_REGEX          = r'[^*]\*\*([^*]+)\*\*'
 # Special cases
 URL_LINE_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
 QLN_LINE_REGEX      = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
 CC_LINE_REGEX       = r'\s*\*.*credit card.*\*\s*'
+
+# A liberal regex to match any vaguely domain- or url-like string.
+# This will match a URL anywhere in a string.
+# Rules:
+# Have at least one "anything.anything", where "anything" contains only
+# [a-zA-Z0-9_@-], the valid DNS characters ("_" is nonstandard but occurs, and
+# "@" is included to allow "http://user@www.domain.com/place.html". This means
+# it will match any email address.).
+# The start and end are defined by the first non-\word character, excluding
+# enclosing punctuation.
+# Full urls are allowed via an optional scheme and path.
+# A scheme can be any string of non-white\space characters, ending in a ":" and
+# 1-3 "/"s. A path is a "/" followed by any number of non-white\space characters
+# (including zero).
+# match.group(1) should be the entire domain or url.
+URL_REGEX = r'(?:^|\W)((\S+:/{1,3})?[\w@-]+(\.[\w@-]+)+(/\S*)?)(?:\W|$)'
 
 
 """
@@ -127,7 +151,7 @@ class AccountsReader(list):
           section_match1 = re.search(SECTION_REGEX1, line)
           section_match2 = re.search(SECTION_REGEX2, line)
           keyval_match = re.search(KEYVAL_REGEX, line)
-          flag_match = re.search(FLAG_REGEX, line)
+          flag_match = re.search(FLAG_LINE_REGEX, line)
           if account_num_match:
             account = int(account_num_match.group(1))
             section = 'default'
@@ -148,17 +172,15 @@ class AccountsReader(list):
             keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
             if keyval_new_match:
               field = keyval_new_match.group(1)
-              value = keyval_new_match.group(2)
+              values_str = keyval_new_match.group(2)
             else:
               field = keyval_match.group(1)
-              value = keyval_match.group(2)
-            if ';' in value:
-              # multiple values?
-              value = [elem.strip() for elem in value.split(';')]
-            self._safe_add(entry, (account, section, field), value)
+              values_str = keyval_match.group(2)
+            values = self._parse_values(values_str)
+            self._safe_add(entry, (account, section, field), values)
           elif flag_match:
             field = flag_match.group(1)
-            self._safe_add(entry, (account, section, field), True)
+            self._safe_add(entry, (account, section, field), {True:[]})
           elif '=' * 20 in line or '-' * 20 in line:
             # heading divider
             pass
@@ -189,7 +211,7 @@ class AccountsReader(list):
                   {'message':message, 'line':line_num, 'data':line}
                 )
               else:
-                entry[(account, section, 'used credit card')] = True
+                entry[(account, section, 'used credit card')] = {True:[]}
             elif re.search(r'^\S', line):
               # If it's not indented, take the safe route and assume it could be
               # an unrecognized entry header. That means we no longer know which
@@ -215,6 +237,21 @@ class AccountsReader(list):
       )
 
 
+  def _parse_values(self, values_str):
+    """Parse out values and flags from the string in the file.
+    Returns a dict mapping values to lists of their flags."""
+    values = collections.OrderedDict()
+    for value_str in values_str.split(';'):
+      flags = re.findall(FLAG_REGEX, value_str)
+      match = re.search(VALUE_REGEX, value_str)
+      if match:
+        value = match.group(1)
+      else:
+        value = value_str.strip()
+      values[value] = flags
+    return values
+
+
   def _safe_add(self, entry, key, value):
     """Add key/value only if it doesn't already exist in the entry.
     If it does, don't overwrite it and add an error instead."""
@@ -230,9 +267,9 @@ class AccountsReader(list):
 
 
   def _add_qln(self, entry, account, section):
-    entry[(account, section, 'username')] = 'qwerty0'
-    entry[(account, section, 'password')] = 'least secure'
-    entry[(account, section, 'email')] = 'nmapsy'
+    entry[(account, section, 'username')] = {'qwerty0':[]}
+    entry[(account, section, 'password')] = {'least secure':[]}
+    entry[(account, section, 'email')] = {'nmapsy':[]}
 
 
 #TODO: Keep the actual keys (or hell, all the data) in self._accounts, by
