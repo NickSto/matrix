@@ -5,8 +5,8 @@ import argparse
 from matplotlib import pyplot
 import munger
 
-OPT_DEFAULTS = {'xfield':1, 'yfield':2, 'xlabel':'Value',
-  'ylabel':'Frequency', 'color':'cornflowerblue'}
+OPT_DEFAULTS = {'xfield':1, 'yfield':2, 'xlabel':'X Value',
+  'ylabel':'Y Value', 'color':'cornflowerblue'}
 USAGE = """cat file.txt | %(prog)s [options]
        %(prog)s [options] file.txt"""
 DESCRIPTION = """Display a quick histogram of the input data, using matplotlib.
@@ -29,6 +29,9 @@ def main():
     help='Use numbers from this input column as the x values. Give a 1-based '
       'index. Columns are whitespace-delimited unless --tab is given. '
       'Default column: %(default)s')
+  parser.add_argument('-f', '--field', type=int,
+    help='1-dimensional data. Use this column as x values and set y as a '
+      'constant (1).')
   parser.add_argument('-t', '--tab', action='store_true',
     help='Split fields on single tabs instead of whitespace.')
   parser.add_argument('-o', '--out-file', metavar='OUTPUT_FILE',
@@ -39,9 +42,9 @@ def main():
       'default will be used (seems to be about 100dpi).')
   parser.add_argument('-T', '--title',
     help='Plot title. Default: %(default)s')
-  parser.add_argument('-l', '--xlabel',
+  parser.add_argument('-X', '--xlabel',
     help='Label for the X axis. Default: %(default)s')
-  parser.add_argument('-L', '--ylabel',
+  parser.add_argument('-Y', '--ylabel',
     help='Label for the Y axis. Default: %(default)s')
   parser.add_argument('-C', '--color',
     help='Color for the data points. Can use any CSS color. Default: '
@@ -49,7 +52,7 @@ def main():
   parser.add_argument('-r', '--xrange', type=float, nargs=2, metavar='BOUND',
     help='Range of the X axis and bins. Give the lower bound, then the upper.')
   parser.add_argument('-R', '--yrange', type=float, nargs=2, metavar='BOUND',
-    help='Range of the X axis and bins. Give the lower bound, then the upper.')
+    help='Range of the Y axis and bins. Give the lower bound, then the upper.')
   args = parser.parse_args()
 
   if args.file:
@@ -64,8 +67,13 @@ def main():
   integers = True
   for line in input_stream:
     line_num+=1
-    (xstr, ystr) = munger.get_fields(line, fields=(args.xfield, args.yfield),
-      tab=args.tab, errors='warn')
+    if args.field:
+      xstr = munger.get_field(line, field=args.field, tab=args.tab,
+        errors='warn')
+      ystr = '1'
+    else:
+      (xstr, ystr) = munger.get_fields(line, fields=(args.xfield, args.yfield),
+        tab=args.tab, errors='warn')
     if xstr is None or ystr is None:
       continue
     try:
@@ -98,6 +106,8 @@ def main():
     pyplot.xlim(*args.xrange)
   if args.yrange:
     pyplot.ylim(*args.yrange)
+  elif args.field:
+    pyplot.ylim(0, 2)
   if args.title:
     pyplot.title(args.title)
   if args.out_file:
@@ -110,12 +120,7 @@ def to_num(num_str):
   try:
     return int(num_str)
   except ValueError:
-    try:
-      return float(num_str)
-    except ValueError:
-      sys.stderr.write('Warning: Non-number encountered on line %d: %s\n' %
-        (line_num, line.rstrip('\r\n')))
-
+    return float(num_str)
 
 
 def fail(message):
