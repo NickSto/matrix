@@ -87,15 +87,14 @@ def main():
     bins = args.bins
   if args.range:
     bin_range = args.range
-    x_range = args.range
+    args.x_range = args.range
   else:
     bin_range = args.bin_range
-    x_range = args.x_range
   
   # make the actual plot
-  pyplot = matplotliblib.preplot(args)
+  pyplot = matplotliblib.preplot(**vars(args))
   pyplot.hist(data, bins=bins, range=bin_range, color=args.color)
-  matplotliblib.plot(pyplot, args, x_range=x_range)
+  matplotliblib.plot(pyplot, **vars(args))
 
 
 def fail(message):
