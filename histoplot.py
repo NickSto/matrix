@@ -3,7 +3,6 @@ from __future__ import division
 import os
 import sys
 import argparse
-from matplotlib import pyplot
 import matplotliblib
 import munger
 
@@ -92,22 +91,11 @@ def main():
   else:
     bin_range = args.bin_range
     x_range = args.x_range
-  (dpi, figsize) = matplotliblib.scale(args)
-  print dpi, figsize
-
+  
   # make the actual plot
-  pyplot.figure(dpi=dpi, figsize=figsize)
+  pyplot = matplotliblib.preplot(args)
   pyplot.hist(data, bins=bins, range=bin_range, color=args.color)
-  pyplot.xlabel(args.x_label)
-  pyplot.ylabel(args.y_label)
-  if x_range:
-    pyplot.xlim(*x_range)
-  if args.title:
-    pyplot.title(args.title)
-  if args.out_file:
-    pyplot.savefig(args.out_file)
-  else:
-    pyplot.show()
+  matplotliblib.plot(pyplot, args, x_range=x_range)
 
 
 def fail(message):

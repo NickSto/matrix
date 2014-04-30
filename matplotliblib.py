@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 from __future__ import division
+from matplotlib import pyplot
 
 DEFAULTS = {'figsize':(8,6), 'dpi':80, 'width':640, 'height':480}
 OPT_DEFAULTS = {'x_label':'Value', 'y_label':'Frequency',
   'color':'cornflowerblue'}
+
 
 def add_arguments(parser):
   """Add global matplotlib plotting arguments to the argparse parser."""
@@ -34,7 +36,7 @@ def scale(args, defaults=DEFAULTS):
   """Calculate the correct dpi and figsize to scale the image as the user
   requested."""
   # assumptions
-  opts = vars(args).keys()
+  opts = vars(args)
   assert 'dpi' in opts and 'width' in opts and 'height' in opts, (
     'Necessary command-line arguments are missing.'
   )
@@ -78,3 +80,25 @@ def scale(args, defaults=DEFAULTS):
     dpi = defaults['dpi']
     figsize = defaults['figsize']
   return (dpi, figsize)
+
+
+def preplot(args):
+  (dpi, figsize) = scale(args)
+  pyplot.figure(dpi=dpi, figsize=figsize)
+  return pyplot
+
+
+def plot(pyplot, args, x_range=None):
+  opts = vars(args)
+  assert ('x_label' in opts and 'y_label' in opts and 'title' in opts
+    and 'out_file' in opts), 'Necessary command-line arguments are missing.'
+  pyplot.xlabel(args.x_label)
+  pyplot.ylabel(args.y_label)
+  if x_range:
+    pyplot.xlim(*x_range)
+  if args.title:
+    pyplot.title(args.title)
+  if args.out_file:
+    pyplot.savefig(args.out_file)
+  else:
+    pyplot.show()
