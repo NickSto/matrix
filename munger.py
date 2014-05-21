@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 import sys
+NON_NUMBERS = (float('inf'), float('nan'))
 
-
-def get_field(line, field=None, tab=False, errors='silent'):
+def get_field(line, field=None, tab=False, cast=False, errors='silent'):
   """Return field given in "field", or the entire line if no field is given.
   If "field" is out of range for the line, return None, and take the action
   indicated by "errors". If it is "throw", an IndexError will be thrown. If it
   is "warn", it will print a warning to stderr. If it is "silent", do nothing.
   """
   assert errors in ('silent', 'warn', 'throw'), '"errors" parameter invalid.'
+  if cast: raise NotImplementedError #TODO
   if field is None:
     return line
   # split into fields
@@ -55,3 +56,18 @@ def get_fields(line, fields=None, tab=False, errors='silent'):
         sys.stderr.write('Warning: not enough fields for line:\n'+line)
       return output
   return output
+
+
+def to_num(num_str):
+  """Parse a string into an int, if possible, or a float, failing that.
+  If it cannot be parsed as a float, a ValueError will be thrown.
+  The float values "inf" and "nan" are not counted as valid, and will
+  raise a ValueError."""
+  try:
+    return int(num_str)
+  except ValueError:
+    num = float(num_str)
+    if num in NON_NUMBERS:
+      raise ValueError('"inf" and "nan" are not counted as valid numbers')
+    else:
+      return num
