@@ -9,7 +9,6 @@ def get_field(line, field=None, tab=False, cast=False, errors='silent'):
   is "warn", it will print a warning to stderr. If it is "silent", do nothing.
   """
   assert errors in ('silent', 'warn', 'throw'), '"errors" parameter invalid.'
-  if cast: raise NotImplementedError #TODO
   if field is None:
     return line
   # split into fields
