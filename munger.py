@@ -17,19 +17,15 @@ def get_field(line, field=None, tab=False, cast=False, errors='silent'):
     fields = line.strip('\r\n').split('\t')
   else:
     fields = line.strip('\r\n').split()
-  # return requested field
-  try:
-    return fields[field-1]
-  except IndexError:
-    if errors == 'throw':
-      raise IndexError('Not enough fields. Requested {}, line had {}.'.format(
-        field, len(fields)))
-    elif errors == 'warn':
-      sys.stderr.write('Warning: not enough fields for line:\n'+line)
-    return None
+  # try to pull out requested field
+  value = deindex_or_error(fields, field-1, errors, line=line)
+  # try to cast value, if requested
+  if cast:
+    value = cast_or_error(value, errors, line=line)
+  return value
 
 
-def get_fields(line, fields=None, tab=False, errors='silent'):
+def get_fields(line, fields=None, tab=False, cast=False, errors='silent'):
   """Return fields given in "fields", or the entire line if no fields are given.
   If "fields" is out of range for the line, return None, and take the action
   indicated by "errors". If it is "throw", an IndexError will be thrown. If it
@@ -43,19 +39,50 @@ def get_fields(line, fields=None, tab=False, errors='silent'):
     line_fields = line.strip('\r\n').split('\t')
   else:
     line_fields = line.strip('\r\n').split()
-  # get requested fields
+  # try to pull out requested field
   output = [None] * len(fields)
   for (i, field) in enumerate(fields):
-    try:
-      output[i] = line_fields[field-1]
-    except IndexError:
-      if errors == 'throw':
-        raise IndexError('Not enough fields. Requested {}, line had {}.'.format(
-          field, len(line_fields)))
-      elif errors == 'warn':
-        sys.stderr.write('Warning: not enough fields for line:\n'+line)
-      return output
+    output[i] = deindex_or_error(line_fields, field-1, errors, line=line)
+    # try to cast value, if requested
+    if cast:
+      output[i] = cast_or_error(output[i], errors, line=line)
   return output
+
+
+def deindex_or_error(values, index, errors, line=None):
+  """Pull a value from a list of fields, handling errors as requested."""
+  try:
+    return values[index]
+  except IndexError:
+    if errors == 'silent':
+      return None
+    message = 'Not enough fields. Requested {}, line had {}.'.format(
+      index+1, len(values)
+    )
+    if line:
+      message += ' Line:\n'+line
+    if errors == 'throw':
+      raise IndexError(message)
+    elif errors == 'warn':
+      sys.stderr.write('Warning: '+message)
+
+
+def cast_or_error(value, errors, line=None):
+  """Parse a str into a number, handling errors as requested."""
+  try:
+    return to_num(value)
+  except ValueError:
+    if errors == 'silent':
+      return None
+    message = 'Non-number "'+value+'" encountered'
+    if line:
+      message += ' on line:\n'+line
+    else:
+      message += '.'
+    if errors == 'throw':
+      raise ValueError(message)
+    elif errors == 'warn':
+      sys.stderr.write('Warning: '+message)
 
 
 def to_num(num_str):
