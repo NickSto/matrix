@@ -4,6 +4,7 @@ import re
 import os
 import sys
 import time
+import logging
 import datetime
 import argparse
 try:
@@ -48,6 +49,10 @@ def main(argv):
     help='Image files to fix.')
   parser.add_argument('-n', '--no-edit', action='store_true',
     help='Simulation: don\'t make any modifications.')
+  parser.add_argument('-q', '--quiet', action='store_true',
+    help='Print no warnings, only actual changes made.')
+  parser.add_argument('-v', '--verbose', action='store_true',
+    help='Print all warnings, including EXIF parse errors.')
   parser.add_argument('-d', '--max-diff', type=int,
     help='Maximum allowed discrepancy between the filename timestamp and the '
       'date modified, in seconds. Set to 0 to allow no discrepancy. Default: '
@@ -58,6 +63,15 @@ def main(argv):
       'Default: %(default)s')
 
   args = parser.parse_args(argv[1:])
+
+  # Set logging level
+  if args.quiet:
+    loglevel = logging.CRITICAL
+  elif args.verbose:
+    loglevel = logging.INFO
+  else:
+    loglevel = logging.WARNING
+  logging.basicConfig(stream=sys.stderr, level=loglevel, format='%(message)s')
 
   for image_path in args.images:
     if not os.path.isfile(image_path):
@@ -85,7 +99,7 @@ def main(argv):
         if re.search(name_format, image_name):
           recognized = True
       if not recognized:
-        print "Unrecognized name format: "+image_name
+        logging.error("Unrecognized name format: "+image_name)
       continue
     # Compare with date modified
     mod_time = os.path.getmtime(image_name)
@@ -107,16 +121,15 @@ def get_exif_time(image_path):
   if tag_name in tags:
     return parse_time_str(tags[tag_name].values)
   else:
-    sys.stderr.write('Warning: did not find EXIF tag "{}" in file "{}"'
-                     '\n'.format(tag_name, image_path))
+    logging.info('Warning: did not find EXIF tag "{}" in file "{}"'.format(
+                    tag_name, image_path))
     return None
 
 
 def parse_time_str(time_str):
   # Must look like '2014:10:21 11:09:34' or will return None
   if len(time_str) != 19:
-    sys.stderr.write('Warning: Invalid EXIF time string length "'+time_str
-                     +'".\n')
+    logging.info('Warning: Invalid EXIF time string length "'+time_str+'".')
     return None
   try:
     dt = datetime.datetime(year=int(time_str[0:4]),
@@ -126,7 +139,7 @@ def parse_time_str(time_str):
                            minute=int(time_str[14:16]),
                            second=int(time_str[17:19]))
   except ValueError:
-    sys.stderr.write('Warning: Invalid EXIF time string "'+time_str+'".\n')
+    logging.info('Warning: Invalid EXIF time string "'+time_str+'".')
     return None
   return time.mktime(dt.timetuple())
 
