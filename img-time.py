@@ -109,7 +109,7 @@ def main(argv):
         logging.error("Unrecognized name format & no EXIF: "+image_name)
       continue
     # Compare with date modified
-    mod_time = os.path.getmtime(image_name)
+    mod_time = os.path.getmtime(image_path)
     if not valid_timestamp(mod_time, 'date modified'):
       continue
     time_diff = int(round(abs(title_time - mod_time)))
