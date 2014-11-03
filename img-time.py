@@ -9,6 +9,7 @@ import argparse
 try:
   import exifread
 except ImportError:
+  exifread = None
   sys.stderr.write('Warning: Need to install exifread for full functionality.\n')
 
 OPT_DEFAULTS = {'max_diff':60, 'max_tz_diff':60}
@@ -62,7 +63,7 @@ def main(argv):
     if not os.path.isfile(image_path):
       continue
     image_name = os.path.split(image_path)[1]
-    # Parse filename for timestamp
+    # Get timestamp by parsing filename
     title_time = None
     for name_format in NAME_FORMATS:
       match = re.search(name_format, image_name)
@@ -75,13 +76,16 @@ def main(argv):
                                second=int(match.group(6)))
         title_time = time.mktime(dt.timetuple())
         break
+    # Otherwise, try to get it from EXIF data
+    if not title_time and exifread:
+      title_time = get_exif_time(image_path)
     if not title_time:
       recognized = False
       for name_format in IGNORE_FORMATS:
         if re.search(name_format, image_name):
           recognized = True
       if not recognized:
-        print "unrecognized: "+image_name
+        print "Unrecognized name format: "+image_name
       continue
     # Compare with date modified
     mod_time = os.path.getmtime(image_name)
@@ -95,38 +99,24 @@ def main(argv):
         os.utime(image_path, (title_time, title_time))
 
 
-def exif_time(image_path):
-  # Which is the most trustworthy? Number of times each was correct in a conflict:
-  # EXIF DateTimeDigitized/EXIF DateTimeOriginal: 2
-  #TODO: Use TimeZoneOffset
-  tag_names = ['Image DateTime', 'EXIF DateTimeDigitized', 'EXIF DateTimeOriginal']
+def get_exif_time(image_path):
+  #TODO: Use TimeZoneOffset to correct the timestamp
+  tag_name = 'EXIF DateTimeOriginal'
   with open(image_path, 'rb') as image_file:
-    tags = exifread.process_file(image_file, details=False)
-  timestamps = {}
-  for tag_name in tag_names:
-    if tag_name in tags:
-      timestamp = parse_time_str(tags[tag_name].values)
-      if timestamp:
-        timestamps[tag_name] = timestamp
-  if not timestamps:
-    sys.stderr.write('Warning: found no EXIF timestamp tags (known tags: '+
-                     str(tag_names)+')\n')
+    tags = exifread.process_file(image_file, details=False, stop_tag=tag_name)
+  if tag_name in tags:
+    return parse_time_str(tags[tag_name].values)
+  else:
+    sys.stderr.write('Warning: did not find EXIF tag "{}" in file "{}"'
+                     '\n'.format(tag_name, image_path))
     return None
-  last_timestamp = None
-  for tag_name in timestamps:
-    timestamp = timestamps[tag_name]
-    if last_timestamp and last_timestamp != timestamp:
-      sys.stderr.write('Warning: EXIF timestamp disagreement: '+str(timestamps)
-                       +'\n')
-      return None
-    last_timestamp = timestamp
-  return timestamp
 
 
 def parse_time_str(time_str):
   # Must look like '2014:10:21 11:09:34' or will return None
   if len(time_str) != 19:
-    sys.stderr.write('Warning: Invalid EXIF time string length "'+time_str+'".\n')
+    sys.stderr.write('Warning: Invalid EXIF time string length "'+time_str
+                     +'".\n')
     return None
   try:
     dt = datetime.datetime(year=int(time_str[0:4]),
