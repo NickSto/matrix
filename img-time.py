@@ -11,16 +11,16 @@ try:
   import exifread
 except ImportError:
   exifread = None
-  logging.warn('Warning: Need to install exifread for full functionality.')
+  sys.stderr.write('Warning: Must install exifread for full functionality.\n')
 
 
 OPT_DEFAULTS = {'max_diff':60, 'max_tz_diff':60}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = """Properly set the timestamp on images with common filename
-formats. Compares the timestamp in the filename with the date modified, sets the
-date modified to the filename timestamp if there is a difference. N.B.: It
-ignores differences likely due to time zones (an even number of hours
-difference)."""
+DESCRIPTION = """Properly set the date modified on images with common filename
+formats or EXIF data. Compares the timestamp in the filename or EXIF with the
+date modified, sets the date modified to the proper timestamp if there is a
+difference. N.B.: It ignores differences likely due to time zones (an even
+number of hours difference)."""
 
 MIN_DATE = 788936400  # Jan 1, 1995
 MAX_DATE = time.time() + 60*60*24*7  # A week in the future
@@ -93,14 +93,22 @@ def main(argv):
                                second=int(match.group(6)))
         title_time = time.mktime(dt.timetuple())
         break
-    if title_time and not valid_timestamp(title_time, 'filename timestamp'):
-      continue
+    if title_time:
+      valid_time = valid_timestamp(title_time, 'filename timestamp')
     # Otherwise, try to get it from EXIF data
-    if not title_time and exifread:
-      title_time = get_exif_time(image_path)
-      if title_time and not valid_timestamp(title_time, 'EXIF timestamp'):
+    exif_time = None
+    if not title_time or not valid_time and exifread:
+      exif_time = get_exif_time(image_path)
+      if exif_time and not valid_timestamp(exif_time, 'EXIF timestamp'):
         continue
-    if not title_time:
+    # Decide which time to use, or error out.
+    canon_time = None
+    if title_time:
+      canon_time = title_time
+    elif exif_time:
+      canon_time = exif_time
+    else:
+      # If it's a known filename type, don't log an error.
       recognized = False
       for name_format in IGNORE_FORMATS:
         if re.search(name_format, image_name):
@@ -112,14 +120,14 @@ def main(argv):
     mod_time = os.path.getmtime(image_path)
     if not valid_timestamp(mod_time, 'date modified'):
       continue
-    time_diff = int(round(abs(title_time - mod_time)))
+    time_diff = int(round(abs(canon_time - mod_time)))
     tz_diff = abs(time_diff - round(time_diff/60/60)*60*60)
     if time_diff > args.max_diff and tz_diff >= args.max_tz_diff:
       print '{}: discrepancy of {} ({})'.format(image_name,
         datetime.timedelta(seconds=time_diff), time_diff)
       if not args.no_edit:
         # Correct date modified
-        os.utime(image_path, (title_time, title_time))
+        os.utime(image_path, (canon_time, canon_time))
 
 
 def valid_timestamp(timestamp, description='timestamp'):
@@ -140,7 +148,7 @@ def get_exif_time(image_path):
     return parse_time_str(tags[tag_name].values)
   else:
     logging.info('Warning: did not find EXIF tag "{}" in file "{}"'.format(
-                    tag_name, image_path))
+                 tag_name, image_path))
     return None
 
 
