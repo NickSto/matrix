@@ -11,7 +11,8 @@ try:
   import exifread
 except ImportError:
   exifread = None
-  sys.stderr.write('Warning: Need to install exifread for full functionality.\n')
+  logging.warn('Warning: Need to install exifread for full functionality.')
+
 
 OPT_DEFAULTS = {'max_diff':60, 'max_tz_diff':60}
 USAGE = "%(prog)s [options]"
@@ -21,6 +22,8 @@ date modified to the filename timestamp if there is a difference. N.B.: It
 ignores differences likely due to time zones (an even number of hours
 difference)."""
 
+MIN_DATE = 788936400  # Jan 1, 1995
+MAX_DATE = time.time() + 60*60*24*7  # A week in the future
 NAME_FORMATS = [
   # Samsung Galaxy S2 camera
   r'^(?:IMG|VID|PANO)_(20\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.(?:jpg|mp4)$',
@@ -90,19 +93,25 @@ def main(argv):
                                second=int(match.group(6)))
         title_time = time.mktime(dt.timetuple())
         break
+    if title_time and not valid_timestamp(title_time, 'filename timestamp'):
+      continue
     # Otherwise, try to get it from EXIF data
     if not title_time and exifread:
       title_time = get_exif_time(image_path)
+      if title_time and not valid_timestamp(title_time, 'EXIF timestamp'):
+        continue
     if not title_time:
       recognized = False
       for name_format in IGNORE_FORMATS:
         if re.search(name_format, image_name):
           recognized = True
       if not recognized:
-        logging.error("Unrecognized name format: "+image_name)
+        logging.error("Unrecognized name format & no EXIF: "+image_name)
       continue
     # Compare with date modified
     mod_time = os.path.getmtime(image_name)
+    if not valid_timestamp(mod_time, 'date modified'):
+      continue
     time_diff = int(round(abs(title_time - mod_time)))
     tz_diff = abs(time_diff - round(time_diff/60/60)*60*60)
     if time_diff > args.max_diff and tz_diff >= args.max_tz_diff:
@@ -111,6 +120,15 @@ def main(argv):
       if not args.no_edit:
         # Correct date modified
         os.utime(image_path, (title_time, title_time))
+
+
+def valid_timestamp(timestamp, description='timestamp'):
+  """Validate timestamps by checking if they're plausible for a digital photo."""
+  if timestamp < MIN_DATE or timestamp > MAX_DATE:
+    time_str = str(datetime.datetime.fromtimestamp(timestamp))
+    logging.error('Warning: Invalid {}: {}'.format(description, time_str))
+    return False
+  return True
 
 
 def get_exif_time(image_path):
