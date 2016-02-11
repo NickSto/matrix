@@ -16,7 +16,7 @@ DESCRIPTION = """This will print all the sleep and wake events from your log fil
 (from earliest to latest). The output is tab-delimited, with the event's unix timestamp as the first
 column and the event type ("sleep" or "wake") as the second column."""
 
-TIMESTAMP_FORMAT = '%a %b %d %H:%M:%S %Z %Y'
+TIMESTAMP_FORMAT = '%a %b %d %H:%M:%S %Y'
 TIME_LINE_REGEX = re.compile(r'^([A-Za-z]{3} [A-Za-z]{3} +\d{1,2} [0-9:]{8} [A-Za-z]{3} 2\d{3}): (.*)$')
 
 def main(argv):
@@ -38,8 +38,9 @@ def main(argv):
 
   log_paths = get_path_list(log_path_base, args.extension)
 
+  tz_cache = {}
   for log_path in reversed(log_paths):
-    read_log(log_path)
+    read_log(log_path, tz_cache=tz_cache)
 
 
 def get_path_list(path_base, ext):
@@ -58,7 +59,7 @@ def get_path_list(path_base, ext):
   return path_list
 
 
-def read_log(log_path):
+def read_log(log_path, tz_cache={}):
   if log_path.endswith('.gz'):
     log = gzip.open(log_path)
   else:
@@ -72,35 +73,62 @@ def read_log(log_path):
         action = 'wake'
       else:
         continue
-      timestamp = parse_date_str(match.group(1))
+      timestamp = parse_date_str(match.group(1), tz_cache)
       if timestamp is None:
         continue
       print(timestamp, action, sep='\t')
   log.close()
 
 
-def parse_date_str(date_str):
+def parse_date_str(date_str, tz_cache):
   """Parse a date string like 'Tue Feb  2 01:21:37 EST 2016' into a unix timestamp.
   Returns an int. On error, returns None.
-  Avoids the Python bug recognizing timezone names by outsourcing parsing to the date command
-  if the native Python method fails.
-  The bug occurs when the timezone is not UTC, GMT, or the current one (returned by time.tzname):
-  https://bugs.python.org/issue22377"""
+  Avoids Python timezone bugs by outsourcing parsing to the date command. Caches timezone
+  information so that it won't use the date command more than once per timezone.
+  Will be incorrect in the edge case of a timezone whose legal definition changes (e.g. "After this
+  date, CET is now UTC+2, not UTC+1!").
+  The main Python timezone bug is that even when datetime.strptime() recognizes a timezone, it
+  ignores it and assumes the local timezone instead."""
+  # Get the timezone from the date string, then remove it.
+  date_fields = date_str.split()
+  tz_str = date_fields[4]
+  del(date_fields[4])
+  date_str_local = ' '.join(date_fields)
+  # Get datetime's interpretation of the timestamp (always local).
   try:
-    dt = datetime.datetime.strptime(date_str, TIMESTAMP_FORMAT)
-    return int(time.mktime(dt.timetuple()))
+    dt = datetime.datetime.strptime(date_str_local, TIMESTAMP_FORMAT)
   except ValueError:
-    with open(os.devnull) as devnull:
-      try:
-        output = subprocess.check_output(['date', '-d', date_str, '+%s'], stderr=devnull)
-      except OSError:
-        return
-      except subprocess.CalledProcessError:
-        return
+    # On error, fall back on the "date" command.
+    return parse_date_cmd(date_str)
+  timestamp_local = int(time.mktime(dt.timetuple()))
+  if tz_str in tz_cache:
+    return timestamp_local - tz_cache[tz_str]
+  else:
+    # Get the real timestamp, including the actual timezone, from the ultimate authority:
+    # the "date" command.
+    timestamp = parse_date_cmd(date_str)
+    if timestamp is None:
+      return None
+    # Cache the difference between datetime's interpretation and the "date" command's answer, so we
+    # don't have to run the command again for this timezone.
+    tz_cache[tz_str] = timestamp_local - timestamp
+    return timestamp
+
+
+def parse_date_cmd(date_str):
+  """Use the "date" command to parse a date string.
+  Returns an integer timestamp or None on error."""
+  with open(os.devnull) as devnull:
     try:
-      return int(output.rstrip('\r\n'))
-    except ValueError:
+      output = subprocess.check_output(['date', '-d', date_str, '+%s'], stderr=devnull)
+    except OSError:
       return
+    except subprocess.CalledProcessError:
+      return
+  try:
+    return int(output.rstrip('\r\n'))
+  except ValueError:
+    return
 
 
 def fail(message):
