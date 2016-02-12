@@ -25,6 +25,8 @@ def main(argv):
   parser.set_defaults(**ARG_DEFAULTS)
 
   # parser.add_argument('log_file', metavar='pm-suspend.log', nargs='?')
+  parser.add_argument('-r', '--reverse', action='store_true',
+    help='Print events from newest to oldest.')
   parser.add_argument('-d', '--log-dir',
     help='Default: %(default)s')
   parser.add_argument('-b', '--log-base',
@@ -38,12 +40,25 @@ def main(argv):
 
   log_paths = get_path_list(log_path_base, args.extension)
 
+  if args.reverse:
+    log_paths = reversed(log_paths)
+
   tz_cache = {}
-  for log_path in reversed(log_paths):
-    read_log(log_path, tz_cache=tz_cache)
+  for log_path in log_paths:
+    events = read_log(log_path, tz_cache=tz_cache)
+    if args.reverse:
+      events = reversed(events)
+    print_events(events)
 
 
 def get_path_list(path_base, ext):
+  """Returns paths to all existing log files, in chronological order (oldest first).
+  Assumes log files are appended with numbers in order, and, optionally, compression extensions:
+  /var/log/pm-suspend.log
+  /var/log/pm-suspend.log.1
+  /var/log/pm-suspend.log.2
+  /var/log/pm-suspend.log.3.gz
+  /var/log/pm-suspend.log.4.gz"""
   path_list = []
   i = 1
   path_candidate = path_base
@@ -56,10 +71,11 @@ def get_path_list(path_base, ext):
     path_candidate = '{base}.{i}'.format(base=path_base, i=i)
     path_candidate_compressed = '{base}.{i}.{ext}'.format(base=path_base, i=i, ext=ext)
     i += 1
-  return path_list
+  return list(reversed(path_list))
 
 
 def read_log(log_path, tz_cache={}):
+  events = []
   if log_path.endswith('.gz'):
     log = gzip.open(log_path)
   else:
@@ -76,8 +92,14 @@ def read_log(log_path, tz_cache={}):
       timestamp = parse_date_str(match.group(1), tz_cache)
       if timestamp is None:
         continue
-      print(timestamp, action, sep='\t')
+      events.append({'timestamp':timestamp, 'action':action})
   log.close()
+  return events
+
+
+def print_events(events):
+  for event in events:
+    print(event['timestamp'], event['action'], sep='\t')
 
 
 def parse_date_str(date_str, tz_cache):
