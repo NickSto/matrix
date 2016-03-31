@@ -142,8 +142,8 @@ def main(argv):
       else:
         ssid = '.'
         mac = '.'
-      print(int(now), int(elapsed), interface, mac, ssid, received_since, sent_since,
-            int(received_rate), int(sent_rate), sep='\t')
+      print(int(round(now)), int(round(elapsed)), interface, mac, ssid, received_since, sent_since,
+            int(round(received_rate)), int(round(sent_rate)), sep='\t')
       if args.update:
         last_file.write('{}\t{}\t{}\n'.format(interface, received, sent))
   if args.update:
