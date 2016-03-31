@@ -5,8 +5,9 @@ import os
 import sys
 import time
 import argparse
-from lib import ipwraplib
 from lib import simplewrap
+from lib import ipwraplib
+from lib import console
 
 UPTIME_PATH = '/proc/uptime'
 ARG_DEFAULTS = {'status_path':'/proc/net/dev', 'watch_interfaces':'', 'ignore_interfaces':'lo',
@@ -38,6 +39,9 @@ def main(argv):
   wrapper = simplewrap.Wrapper()
   wrapped_description = wrapper.wrap(DESCRIPTION)
 
+  # A bug in argparse is that it gets the current terminal width from $COLUMNS, which is usually not
+  # set. Manually set it so it wraps the text at the actual terminal width.
+  os.environ['COLUMNS'] = str(console.termwidth())
   parser = argparse.ArgumentParser(description=wrapped_description,
                                    formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.set_defaults(**ARG_DEFAULTS)
