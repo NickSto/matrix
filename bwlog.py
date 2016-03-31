@@ -5,8 +5,8 @@ import os
 import sys
 import time
 import argparse
-import lib.ipwraplib as ipwraplib
-import lib.simplewrap as simplewrap
+from lib import ipwraplib
+from lib import simplewrap
 
 UPTIME_PATH = '/proc/uptime'
 ARG_DEFAULTS = {'status_path':'/proc/net/dev', 'watch_interfaces':'', 'ignore_interfaces':'lo',
@@ -33,36 +33,34 @@ Each line consists of 7 tab-delimited columns:
 def main(argv):
 
   # Set up a wrapper to wrap text around the current terminal width. I want to be able to include
-  # line breaks in my help text, which requires argparse.RawTextHelpFormatter, but that results in
-  # fixed-width text that's really messy, unless I auto-resize it myself with simplewrap.
+  # line breaks in my help text, which requires argparse.RawDescriptionHelpFormatter, but that
+  # results in fixed-width text that's really messy, unless I auto-resize it myself with simplewrap.
   wrapper = simplewrap.Wrapper()
-  wrap = wrapper.wrap
+  wrapped_description = wrapper.wrap(DESCRIPTION)
 
-  parser = argparse.ArgumentParser(description=wrap(DESCRIPTION),
-                                   formatter_class=argparse.RawTextHelpFormatter)
+  parser = argparse.ArgumentParser(description=wrapped_description,
+                                   formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.set_defaults(**ARG_DEFAULTS)
 
-  wrapper.width = wrapper.width - 24
   parser.add_argument('-s', '--status-path',
-    help=wrap('The path to the pseudo-file containing the current bandwidth usage. Default: "'+
-              ARG_DEFAULTS['status_path']+'"'))
+    help='The path to the pseudo-file containing the current bandwidth usage. Default: '
+         '"%(default)s"')
   parser.add_argument('-l', '--last-file',
-    help=wrap('The path to the log file containing the bandwidth usage at the start of this '
-              'observation period. The start of the period is assumed to be the date modified of '
-              'this file. If this file does not exist, the script will assume the record started '
-              'at the last reboot, and that the totals were 0 then. Default: "'
-              +ARG_DEFAULTS['last_file']+'"'))
+    help='The path to the log file containing the bandwidth usage at the start of this '
+         'observation period. The start of the period is assumed to be the date modified of '
+         'this file. If this file does not exist, the script will assume the record started '
+         'at the last reboot, and that the totals were 0 then. Default: "%(default)s"')
   parser.add_argument('-u', '--update', action='store_true',
-    help=wrap('Update the last_file. This will serve as the start of a new observation period.'))
+    help='Update the last_file. This will serve as the start of a new observation period.')
   parser.add_argument('-D', '--no-default', action='store_true',
-    help=wrap('Watch all interfaces, not just the one designated as the default route.'))
+    help='Watch all interfaces, not just the one designated as the default route.')
   parser.add_argument('-i', '--watch-interfaces',
-    help=wrap('If --no-default is given, this specifies which interfaces to exclusively watch '
-              '(comma-delimited). If given, the script will only output info on these interfaces, '
-              'ignoring all others. Default: "'+ARG_DEFAULTS['watch_interfaces']+'"'))
+    help='If --no-default is given, this specifies which interfaces to exclusively watch '
+         '(comma-delimited). If given, the script will only output info on these interfaces, '
+         'ignoring all others. Default: "%(default)s"')
   parser.add_argument('-I', '--ignore-interfaces',
-    help=wrap('If --no-default is given, this specifies interfaces to ignore (comma-delimited). '
-              'Default: "'+ARG_DEFAULTS['ignore_interfaces']+'"'))
+    help='If --no-default is given, this specifies interfaces to ignore (comma-delimited). '
+         'Default: "%(default)s"')
 
   args = parser.parse_args(argv[1:])
 
