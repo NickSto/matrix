@@ -12,20 +12,22 @@ UPTIME_PATH = '/proc/uptime'
 ARG_DEFAULTS = {'status_path':'/proc/net/dev', 'watch_interfaces':'', 'ignore_interfaces':'lo',
                 'last_file':os.path.expanduser('~/.local/share/nbsdata/bwlast.tsv')}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = ('Print bandwidth usage since the last invocation. Uses '+ARG_DEFAULTS['status_path']+
-' by default to monitor the bandwidth use of each interface. It will parse that pseudo-file, log '+
-'the current numbers to '+ARG_DEFAULTS['last_file']+', and print the change since the last '+
-"""invocation.
-'Output is one line per interface, 7 tab-delimited columns:
+DESCRIPTION = ('Print bandwidth usage in the current observation window. Uses '+
+ARG_DEFAULTS['status_path']+' by default to monitor the bandwidth use of each interface. It will '
+'parse that pseudo-file, log the current numbers to '+ARG_DEFAULTS['last_file']+' if requested, '
+'and print the change since the start of the observation period. By default, it will only print '
+'information on the currently active interface (the default route). If --no-default is given, it '
+'will print a line for every interface.'+"""
+Each line consists of 7 tab-delimited columns:
 1. Current Unix timestamp
-2. Seconds since last invocation
+2. Seconds since the start of the observation period
 3. Interface name
 4. Gateway MAC address
 5. Wifi SSID
-6. Bytes received since last invocation
-7. Bytes sent since last invocation
-8. Received rate since last invocation (bytes/sec)
-9. Sent rate since last invocation (bytes/sec).""")
+6. Bytes received in this period
+7. Bytes sent in this period
+8. Received rate in this period (bytes/sec)
+9. Sent rate in this period (bytes/sec).""")
 
 
 def main(argv):
@@ -45,17 +47,22 @@ def main(argv):
     help=wrap('The path to the pseudo-file containing the current bandwidth usage. Default: "'+
               ARG_DEFAULTS['status_path']+'"'))
   parser.add_argument('-l', '--last-file',
-    help=wrap('The path to the log file containing the bandwidth usage at the last invocation. The '
-              'time of last invocation is assumed to be the date modified of this file. If this '
-              'file does not exist, this will assume the record started at the last reboot, and '
-              'that the totals were 0 then. Default: "'+ARG_DEFAULTS['last_file']+'"'))
+    help=wrap('The path to the log file containing the bandwidth usage at the start of this '
+              'observation period. The start of the period is assumed to be the date modified of '
+              'this file. If this file does not exist, the script will assume the record started '
+              'at the last reboot, and that the totals were 0 then. Default: "'
+              +ARG_DEFAULTS['last_file']+'"'))
+  parser.add_argument('-u', '--update', action='store_true',
+    help=wrap('Update the last_file. This will serve as the start of a new observation period.'))
+  parser.add_argument('-D', '--no-default', action='store_true',
+    help=wrap('Watch all interfaces, not just the one designated as the default route.'))
   parser.add_argument('-i', '--watch-interfaces',
-    help=wrap('Interfaces to exclusively watch (comma-delimited). If given, this will only output '
-              'info on these interfaces, ignoring all others. Default: "'+
-              ARG_DEFAULTS['watch_interfaces']+'"'))
+    help=wrap('If --no-default is given, this specifies which interfaces to exclusively watch '
+              '(comma-delimited). If given, the script will only output info on these interfaces, '
+              'ignoring all others. Default: "'+ARG_DEFAULTS['watch_interfaces']+'"'))
   parser.add_argument('-I', '--ignore-interfaces',
-    help=wrap('Interfaces to ignore (comma-delimited). Default: "'+
-              ARG_DEFAULTS['ignore_interfaces']+'"'))
+    help=wrap('If --no-default is given, this specifies interfaces to ignore (comma-delimited). '
+              'Default: "'+ARG_DEFAULTS['ignore_interfaces']+'"'))
 
   args = parser.parse_args(argv[1:])
 
@@ -84,55 +91,63 @@ def main(argv):
   elapsed = now - last_time
 
   wifi_info = ipwraplib.get_wifi_info()
+  default_interface, default_ip = ipwraplib.get_default_route()
   wifi = {'interface':wifi_info[0], 'ssid':wifi_info[1], 'mac':wifi_info[2]}
 
   line_num = 0
+  if args.update:
+    last_file = open(args.last_file, 'w')
   with open(args.status_path) as status_file:
-    with open(args.last_file, 'w') as last_file:
-      for line in status_file:
-        line_num += 1
-        # Note: Sometimes the output has been observed to have no space between the colon and the
-        # first field: https://stackoverflow.com/questions/1052589/how-can-i-parse-the-output-of-proc-net-dev-into-keyvalue-pairs-per-interface-u
-        fields = line.split(':')
-        if len(fields) != 2:
-          continue
-        interface = fields[0].strip()
+    for line in status_file:
+      line_num += 1
+      # Note: Sometimes the output has been observed to have no space between the colon and the
+      # first field: https://stackoverflow.com/questions/1052589/how-can-i-parse-the-output-of-proc-net-dev-into-keyvalue-pairs-per-interface-u
+      fields = line.split(':')
+      if len(fields) != 2:
+        continue
+      interface = fields[0].strip()
+      if args.no_default:
         if interface in ifaces_ignore:
           sys.stderr.write('line {}: ignoring interface {}.\n'.format(line_num, interface))
           continue
         if ifaces_watch and interface not in ifaces_watch:
           sys.stderr.write('line {}: not watching interface {}.\n'.format(line_num, interface))
           continue
-        fields = fields[1].split()
-        if len(fields) != 16:
-          sys.stderr.write('line {}: only {} fields.\n'.format(line_num, len(fields)))
-          continue
-        try:
-          received = int(fields[0])
-          sent = int(fields[8])
-        except ValueError:
-          sys.stderr.write('line {}: invalid int(s): "{}" and/or "{}".\n'
-                           .format(line_num, fields[0], fields[8]))
-          continue
-        try:
-          last_received, last_sent = last[interface]
-        except KeyError:
-          last_received, last_sent = (0, 0)
-        received_since = received - last_received
-        sent_since = sent - last_sent
-        received_rate = received_since/elapsed
-        sent_rate = sent_since/elapsed
-        # If this is the wifi interface, we can add more info about it.
-        #TODO: Get the MAC address of non-wifi gateways too.
-        if interface == wifi['interface']:
-          ssid = wifi['ssid']
-          mac = wifi['mac']
-        else:
-          ssid = '.'
-          mac = '.'
-        print(int(now), int(elapsed), interface, mac, ssid, received_since, sent_since,
-              int(received_rate), int(sent_rate), sep='\t')
+      elif interface != default_interface:
+        continue
+      fields = fields[1].split()
+      if len(fields) != 16:
+        sys.stderr.write('line {}: only {} fields.\n'.format(line_num, len(fields)))
+        continue
+      try:
+        received = int(fields[0])
+        sent = int(fields[8])
+      except ValueError:
+        sys.stderr.write('line {}: invalid int(s): "{}" and/or "{}".\n'
+                         .format(line_num, fields[0], fields[8]))
+        continue
+      try:
+        last_received, last_sent = last[interface]
+      except KeyError:
+        last_received, last_sent = (0, 0)
+      received_since = received - last_received
+      sent_since = sent - last_sent
+      received_rate = received_since/elapsed
+      sent_rate = sent_since/elapsed
+      # If this is the wifi interface, we can add more info about it.
+      #TODO: Get the MAC address of non-wifi gateways too.
+      if interface == wifi['interface']:
+        ssid = wifi['ssid']
+        mac = wifi['mac']
+      else:
+        ssid = '.'
+        mac = '.'
+      print(int(now), int(elapsed), interface, mac, ssid, received_since, sent_since,
+            int(received_rate), int(sent_rate), sep='\t')
+      if args.update:
         last_file.write('{}\t{}\t{}\n'.format(interface, received, sent))
+  if args.update:
+    last_file.close()
 
 
 def read_last(last_path):
