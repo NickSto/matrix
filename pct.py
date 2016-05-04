@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
+from __future__ import print_function
 import sys
 import urllib
 import argparse
@@ -39,6 +40,7 @@ def main(argv):
       sys.stdout.write(urllib.unquote(line))
   else:
     raise AssertionError('Operation must be "encode" or "decode".')
+  print()
 
 
 if __name__ == '__main__':
