@@ -13,8 +13,6 @@
 #TODO: Deal with comments at the ends of lines  # like this
 #      but somehow allow in things like "account #:" or "PIN#"
 #TODO: Recognize section names like "[for credit card]" and tag appropriately
-#TODO: Deal with "[deleted] notes"
-#      For sites or accounts that are deleted, just add a 'deleted' key = True
 #TOOD: Ideally, this should allow preservation of the original formatting of the
 #      file, including all unrecognized lines. Then I could use this to actually
 #      edit the file and overwrite it without losing any information.
@@ -27,11 +25,12 @@ SUPER_SECTION_REGEX = r'^>([^>]+)\s*$'
 SITE_REGEX          = r'^(\S(?:.*\S)):\s*$'
 SITE_URL_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
 SITE_ALIAS_REGEX    = r' \(([^)]+)\):\s*$'
-ACCOUNT_NUM_REGEX   = r'^\s+{account ?(\d+)}\s*$' # new account num format
+ACCOUNT_NUM_REGEX   = r'^\s+{account ?(\d+|None)}\s*$' # new account num format
 SECTION_REGEX1      = r'^\s+\[([\w#. -]+)\]\s*$'
 SECTION_REGEX2      = r'^ {3,5}(\S(?:.*\S)):\s*$'
 KEYVAL_REGEX        = r'^\s+([^\s*](?:[^:]*\S)?):\s*(\S.*)$'
 KEYVAL_NEW_REGEX    = r'^\t(\S(?:[^:]*\S)?):\t+(\S(?:.*\S)?)\s*$'
+SECTION_KEYVAL_REGEX= r'^\t+\[([^\]]+)\]\s+(\S.*?):\t+(\S.*)$'
 FLAG_LINE_REGEX     = r'^\s+\*\*([^*]+)\*\*\s*$'
 VALUE_REGEX         = r'^\s*(\S(?:.*?\S)?)\s+\*\*'
 FLAG_REGEX          = r'[^*]\*\*([^*]+)\*\*'
@@ -153,7 +152,11 @@ class AccountsReader(list):
           keyval_match = re.search(KEYVAL_REGEX, line)
           flag_match = re.search(FLAG_LINE_REGEX, line)
           if account_num_match:
-            account = int(account_num_match.group(1))
+            account_str = account_num_match.group(1)
+            if account_str == 'None':
+              account = None
+            else:
+              account = int(account_str)
             section = 'default'
           elif section_match1 or section_match2:
             # start of section
@@ -170,14 +173,25 @@ class AccountsReader(list):
           elif keyval_match:
             # a key/value data line
             keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
-            if keyval_new_match:
+            section_keyval_match = re.search(SECTION_KEYVAL_REGEX, line)
+            if section_keyval_match:
+              this_section = section_keyval_match.group(1)
+              field = section_keyval_match.group(2)
+              values_str = section_keyval_match.group(3)
+            elif keyval_new_match:
+              this_section = section
               field = keyval_new_match.group(1)
               values_str = keyval_new_match.group(2)
             else:
+              this_section = section
               field = keyval_match.group(1)
               values_str = keyval_match.group(2)
             values = self._parse_values(values_str)
-            self._safe_add(entry, (account, section, field), values)
+            if this_section == 'meta':
+              this_account = None
+            else:
+              this_account = account
+            self._safe_add(entry, (this_account, this_section, field), values)
           elif flag_match:
             field = flag_match.group(1)
             self._safe_add(entry, (account, section, field), {True:[]})
@@ -320,7 +334,7 @@ class AccountsEntry(collections.OrderedDict):
     is_str = isinstance(key, basestring)
     is_proper_tuple = (
       isinstance(key, tuple) and len(key) == 3
-      and isinstance(key[0], int)
+      and (isinstance(key[0], int) or key[0] is None)
       and isinstance(key[1], basestring)
       and isinstance(key[2], basestring)
     )

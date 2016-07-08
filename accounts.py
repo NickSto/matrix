@@ -77,8 +77,8 @@ def main():
     account = entry.default_account
     section = entry.default_section
     for account in entry.accounts():
-      if account != entry.default_account:
-        print "  {account"+str(account)+"}"
+      # if account != entry.default_account:
+      print "  {account "+str(account)+"}"
       for section in entry.sections(account):
         if section != entry.default_section:
           print "    ["+section+"]"
