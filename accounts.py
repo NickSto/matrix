@@ -5,15 +5,14 @@ import sys
 import argparse
 import accountslib
 
-OPT_DEFAULTS = {'validate':True}
+OPT_DEFAULTS = {'keys':()}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = """Parse the accounts.txt file.
-Stderr will print lines that violate the format. Stdout will print the account
-data in the new, proper format."""
+DESCRIPTION = """Parse the accounts.txt file, find parsing errors, and print selected information.
+"""
 EPILOG = """N.B.: Binary flags (like for "**used credit card**") are not
 currently output, though some are parsed properly with no formatting errors."""
 
-ACCOUNTS_FILE_DEFAULT = 'annex/Info/reference, notes/accounts.txt'
+ACCOUNTS_FILE_DEFAULT = '~/annex/Info/reference, notes/accounts.txt'
 
 def main():
 
@@ -21,18 +20,24 @@ def main():
   parser.set_defaults(**OPT_DEFAULTS)
 
   parser.add_argument('accounts_file', nargs='?',
-    help='Default: ~/'+ACCOUNTS_FILE_DEFAULT)
-  parser.add_argument('-v', '--validate', action='store_true',
-    help='Just check the file to make sure it still conforms to the '
-      'assumptions of the parser.')
+    help='Default: '+ACCOUNTS_FILE_DEFAULT)
+  parser.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
+    help='Keys to select. Will only print the key: value line. If there are multiple values, it '
+         'will print them on multiple lines, repeating the key name (perfect for sort | uniq). '
+         'Give in comma-delimited format.')
+  parser.add_argument('-a', '--print-all', action='store_true',
+    help='Print all account information.')
+  parser.add_argument('-w', '--warn', action='store_true',
+    help='Instead of failing on a parsing error (before printing any output), print a warning and '
+         'continue.')
   parser.add_argument('-q', '--quiet', action='store_true',
-    help="""Don't print warnings.""")
+    help='Don\'t print warnings.')
   parser.add_argument('-O', '--stdout', action='store_true',
-    help="""Suppress normal output and print warnings to stdout.""")
+    help='Suppress normal output and print warnings to stdout.')
 
   args = parser.parse_args()
 
-  if args.validate:
+  if args.warn:
     level = 'warn'
   else:
     level = 'die'
@@ -44,8 +49,7 @@ def main():
   if args.accounts_file:
     accounts_file = args.accounts_file
   else:
-    home = os.path.expanduser('~')
-    accounts_file = os.path.join(home, ACCOUNTS_FILE_DEFAULT)
+    accounts_file = os.path.expanduser(ACCOUNTS_FILE_DEFAULT)
 
   accounts = accountslib.AccountsReader(accounts_file)
 
@@ -70,20 +74,27 @@ def main():
     sys.exit(0)
 
   for entry in accounts:
-    if entry.site_alias is None:
-      print "{}:".format(entry.site)
-    else:
-      print "{} ({}):".format(entry.site, entry.site_alias)
+    if args.print_all:
+      if entry.site_alias is None:
+        print "{}:".format(entry.site)
+      else:
+        print "{} ({}):".format(entry.site, entry.site_alias)
     account = entry.default_account
     section = entry.default_section
     for account in entry.accounts():
       # if account != entry.default_account:
-      print "  {account "+str(account)+"}"
+      if args.print_all:
+        print "  {account "+str(account)+"}"
       for section in entry.sections(account):
-        if section != entry.default_section:
+        if args.print_all and section != entry.default_section:
           print "    ["+section+"]"
         for (key, values) in entry.items(account=account, section=section):
-          print "\t{}:\t{}".format(key[2], format_values(values))
+          if args.keys:
+            if key[2] in args.keys:
+              for value in values:
+                print "\t{}:\t{}".format(key[2], value)
+          elif args.print_all:
+            print "\t{}:\t{}".format(key[2], format_values(values))
 
 
 def format_values(values):
