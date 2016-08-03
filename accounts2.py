@@ -25,7 +25,7 @@ def main():
   parser.add_argument('-e', '--entry',
     help='Print the entry with this name.')
   parser.add_argument('-E', '--entry-fuzzy',
-    help='Print all entries with this string in the name (case-insensitive).')
+    help='Print all entries with this string in its name or keys (case-insensitive).')
   parser.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
     help='Keys to select. Will only print the key: value line. If there are multiple values, it '
          'will print them on multiple lines, repeating the key name (perfect for sort | uniq). '
@@ -52,11 +52,16 @@ def main():
         if entry.name == args.entry:
           print(entry)
       elif args.entry_fuzzy:
-        if args.entry_fuzzy.lower() in entry.name.lower():
+        query = args.entry_fuzzy.lower()
+        if query in entry.name.lower():
           print(entry)
+        else:
+          for key in entry.keys:
+            if query in key.lower():
+              print(entry)
+              break
       else:
         for account in entry.accounts.values():
-          # if account != entry.default_account:
           for section in account.sections.values():
             for key, values in section.items():
               if args.keys:
