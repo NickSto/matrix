@@ -159,7 +159,6 @@ class Entry(object):
     else:
       self.section = section
     self.accounts = collections.OrderedDict()
-    self.accounts[self.account] = Account(self.account, section=self.section)
     self.urls = []
     self.keys = []
     self.app = []
@@ -173,6 +172,18 @@ class Entry(object):
   @flags.setter
   def flags(self, flags):
     self._get_section(self.account, self.section).flags = flags
+  def _get_section(self, account_num, section_name):
+    try:
+      account = self.accounts[account_num]
+    except KeyError:
+      account = Account(account_num, section=section_name)
+      self.accounts[account_num] = account
+    try:
+      return account[section_name]
+    except KeyError:
+      section = Section(section_name)
+      account[section_name] = section
+      return section
   def _set_values(self, account_num, section_name, key, values):
     """The basic set value implementation used by all other methods of setting values."""
     try:
@@ -181,22 +192,32 @@ class Entry(object):
       account = Account(account_num, section=section_name)
       self.accounts[account_num] = account
     try:
-      section = account.sections[section_name]
+      section = account[section_name]
     except KeyError:
       section = Section(section_name)
-      account.sections[section_name] = section
+      account[section_name] = section
     section[key] = values
-  def _get_section(self, account_num, section_name):
-    account = self.accounts[account_num]
-    return account.sections[section_name]
   def __getitem__(self, key):
-    account = self.accounts[self.account]
-    section = account.sections[self.section]
-    return section.get(key)
+    """Retrieve an account or value using entry[key] notation.
+    If key is None or an int, it will be used as a key to retrieve an account.
+    Otherwise, it will be used as a key for the current section in the current account, to return
+    a list of Values."""
+    if key is None or isinstance(key, int):
+      return self.accounts[key]
+    else:
+      account = self.accounts[self.account]
+      section = account[self.section]
+      return section.get(key)
   def __setitem__(self, key, value):
     """The entry[key] = value notation.
-    key and value are strings. This will auto-create a list of Values from the value string."""
-    self._set_values(self.account, self.section, key, [Value(value)])
+    If key is None or an int, it is interpreted as an accounts key.
+    Otherwise, it is interpreted as a key for the current section in the current account.
+    key and value must then be strings. This will auto-create a list of Values from the value
+    string."""
+    if key is None or isinstance(key, int):
+      self.accounts[key] = value
+    else:
+      self._set_values(self.account, self.section, key, [Value(value)])
   def add_values(self, key, values):
     """Set the values for a key, using a manually created list of Values."""
     if len(values) > 0 and not isinstance(values[0], Value):
@@ -231,31 +252,30 @@ class Entry(object):
       output += '\n'+str(account)
     return output
 
-class Account(object):
+class Account(collections.OrderedDict):
   def __init__(self, number, section=Entry.default_section):
+    super(Account, self).__init__()
     self.number = number
     self.section = section
-    self.sections = collections.OrderedDict()
-    self.sections[self.section] = Section(self.section)
   def __str__(self):
     if self.number in (None, Entry.default_account):
       output = ''
     else:
       output = '    {account'+str(self.number)+'}'
-    for section in self.sections.values():
+    for section in self.values():
       if section.name in (Entry.default_section, Entry.meta_section):
         output += str(section)
       else:
         output += '\n'+str(section)
     return output
   def __repr__(self):
-    return 'Account {} (sections {})'.format(self.number, ', '.join(self.sections.keys()))
+    return 'Account {} (sections {})'.format(self.number, ', '.join(self.keys()))
 
 class Section(collections.OrderedDict):
   def __init__(self, name):
+    super(Section, self).__init__()
     self.name = name
     self.flags = set()
-    super(Section, self).__init__()
   def __str__(self):
     if self.name in (Entry.default_section, Entry.meta_section):
       output = ''
@@ -288,3 +308,11 @@ class Value(object):
       return output + ', flags={})'.format(list(self.flags))
     else:
       return output + ')'
+  def __eq__(self, value):
+    if isinstance(value, Value):
+      if value.value == self.value and value.flags == self.flags:
+        return True
+      else:
+        return False
+    else:
+      return value == self.value
