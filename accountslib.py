@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#TODO: Total rewrite, supporting only strict mode. (Maybe Python 2/3 compatible, why not?)
 #TODO: Attributes. Probably best to allow them to be set on any unique "thing".
 #      e.g. (account), (account, section), (account, section, key), or
 #      (account, section, key, value).
