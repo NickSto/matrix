@@ -1,376 +1,318 @@
-#!/usr/bin/env python
-#TODO: Total rewrite, supporting only strict mode. (Maybe Python 2/3 compatible, why not?)
-#TODO: Attributes. Probably best to allow them to be set on any unique "thing".
-#      e.g. (account), (account, section), (account, section, key), or
-#      (account, section, key, value).
-#TODO: Decide on a format for entry titles that allows for normal names, urls,
-#      and even lists of urls (like LastPass equivalent domains).
-#      I'm thinking it might be okay to just add the url on a second, non-
-#      indented line. And even as many urls as you want. Matching a url- or
-#      domain-like regex might be a unique enough pattern.
-#      Also, allow the site title to be one of the urls in the list.
-#TODO: Note whether a line conformed to the new standards or not (attribute).
-#TODO: Finish strict mode.
-#TODO: Deal with comments at the ends of lines  # like this
-#      but somehow allow in things like "account #:" or "PIN#"
-#TODO: Recognize section names like "[for credit card]" and tag appropriately
-#TOOD: Ideally, this should allow preservation of the original formatting of the
-#      file, including all unrecognized lines. Then I could use this to actually
-#      edit the file and overwrite it without losing any information.
+#!/usr/bin/env python2
 from __future__ import division
 import re
 import collections
 
-TOP_LEVEL_REGEX     = r'^>>([^>]+)\s*$'
-SUPER_SECTION_REGEX = r'^>([^>]+)\s*$'
-SITE_REGEX          = r'^(\S(?:.*\S)):\s*$'
-SITE_URL_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+):\s*$'
-SITE_ALIAS_REGEX    = r' \(([^)]+)\):\s*$'
-ACCOUNT_NUM_REGEX   = r'^\s+{account ?(\d+|None)}\s*$' # new account num format
-SECTION_REGEX1      = r'^\s+\[([\w#. -]+)\]\s*$'
-SECTION_REGEX2      = r'^ {3,5}(\S(?:.*\S)):\s*$'
-KEYVAL_REGEX        = r'^\s+([^\s*](?:[^:]*\S)?):\s*(\S.*)$'
-KEYVAL_NEW_REGEX    = r'^\t(\S(?:[^:]*\S)?):\t+(\S(?:.*\S)?)\s*$'
-SECTION_KEYVAL_REGEX= r'^\t+\[([^\]]+)\]\s+(\S.*?):\t+(\S.*)$'
-FLAG_LINE_REGEX     = r'^\s+\*\*([^*]+)\*\*\s*$'
-VALUE_REGEX         = r'^\s*(\S(?:.*?\S)?)\s+\*\*'
-FLAG_REGEX          = r'[^*]\*\*([^*]+)\*\*'
-# Special cases
-URL_LINE_REGEX      = r'^((?:.+://)?[^.]+\.[^.]+.+)\s*$'
-QLN_LINE_REGEX      = r'^\s+(QLN)(?:\s+\S.*$|\s*$)'
-CC_LINE_REGEX       = r'\s*\*.*credit card.*\*\s*'
+FLAG_REGEX = r'\s\*\*([^*]+)\*\*'
+VALUE_REGEX = r'^\s*(\S.*?)\s+\*\*[^*]+\*\*'
 
-# A liberal regex to match any vaguely domain- or url-like string.
-# This will match a URL anywhere in a string.
-# Rules:
-# Have at least one "anything.anything", where "anything" contains only
-# [a-zA-Z0-9_@-], the valid DNS characters ("_" is nonstandard but occurs, and
-# "@" is included to allow "http://user@www.domain.com/place.html". This means
-# it will match any email address.).
-# The start and end are defined by the first non-\word character, excluding
-# enclosing punctuation.
-# Full urls are allowed via an optional scheme and path.
-# A scheme can be any string of non-white\space characters, ending in a ":" and
-# 1-3 "/"s. A path is a "/" followed by any number of non-white\space characters
-# (including zero).
-# match.group(1) should be the entire domain or url.
-URL_REGEX = r'(?:^|\W)((\S+:/{1,3})?[\w@-]+(\.[\w@-]+)+(/\S*)?)(?:\W|$)'
+class FormatError(Exception):
+  def __init__(self, message=None):
+    if message:
+      Exception.__init__(self, message)
 
-
-"""
-Strict mode - current rules:
-Ignore old-style section lines.
-Don't do fuzzy credit card line matching.
-Ignore QLN lines.
-"""
-
-
-class AccountsReader(list):
-  def __init__(self, filepath, strict=False):
-    if strict:
-      raise NotImplementedError
-    super(AccountsReader, self).__init__()
-    self.errors = []
-    self._parse_accounts(filepath, strict)
-
-  def _parse_accounts(self, filepath, strict):
-    """The parsing engine itself."""
-    line_num = 0
-    last_line = None
-    top_level = None
-    super_section = None
-    entry = None
-    with open(filepath, 'rU') as filehandle:
-      for line_raw in filehandle:
-        line_num+=1
-        line = line_raw.rstrip('\r\n')
-        # Skip blank or commented lines
-        line_stripped = line.strip()
-        if not line_stripped or line_stripped.startswith('#'):
-          continue
-
-        # At a top-level section heading?
-        # (In addition to matching the regex, the previous line must contain
-        # at least 20 "="s in a row.)
-        if last_line is not None and '=' * 20 in last_line:
-          top_level_match = re.search(TOP_LEVEL_REGEX, line)
-          if top_level_match:
-            top_level = top_level_match.group(1).lower()
-            last_line = line
-            continue
-
-        # At a 2nd-level section heading?
-        # (Previous line must contain at least 20 "-"s in a row.)
-        if last_line is not None and '-' * 20 in last_line:
-          super_section_match = re.search(SUPER_SECTION_REGEX, line)
-          if super_section_match:
-            super_section = super_section_match.group(1).lower()
-            last_line = line
-            continue
-
-        # Parse 'online' top-level section (the one with the account info)
-        if top_level == 'online' and super_section == 'accounts':
-
-          # Are we at the start of an entry?
-          site_match = re.search(SITE_REGEX, line)
-          if site_match:
-            # Store previous entry and initialize a new one
-            if entry is not None:
-              self.append(entry)
-            entry = AccountsEntry()
-            # Determine and set the site name, alias, and url
-            entry.site = site_match.group(1)
-            site_url_match = re.search(SITE_URL_REGEX, line)
-            if site_url_match:
-              entry.site = site_url_match.group(1)
-              entry.site_alias = None
-              site_alias_match = re.search(SITE_ALIAS_REGEX, line)
-              if site_alias_match:
-                entry.site_alias = site_alias_match.group(1)
-                site_old = entry.site
-                entry.site = site_old.replace(' ('+entry.site_alias+')', '')
-                if entry.site == site_old:
-                  message = ('Failed to remove alias "'+entry.site_alias+
-                    '" from site name "'+entry.site+'"')
-                  self.errors.append(
-                    {'message':message, 'line':line_num, 'data':line}
-                  )
-            account = 0
-            section = 'default'
-            last_line = line
-            continue
-
-          # If we don't know what entry we're in, skip the rest and get back to
-          # looking for an entry header.
-          if entry is None:
-            last_line = line
-            continue
-
-          # What kind of data line are we on?
-          account_num_match = re.search(ACCOUNT_NUM_REGEX, line)
-          section_match1 = re.search(SECTION_REGEX1, line)
-          section_match2 = re.search(SECTION_REGEX2, line)
-          keyval_match = re.search(KEYVAL_REGEX, line)
-          flag_match = re.search(FLAG_LINE_REGEX, line)
-          if account_num_match:
-            account_str = account_num_match.group(1)
-            if account_str == 'None':
-              account = None
-            else:
-              account = int(account_str)
-            section = 'default'
-          elif section_match1 or section_match2:
-            # start of section
-            if section_match1:
-              section = section_match1.group(1)
-            else:
-              if strict:
-                message = 'Strict mode error: old section line format'
-                self.errors.append(
-                  {'message':message, 'line':line_num, 'data':line}
-                )
-              else:
-                section = section_match2.group(1)
-          elif keyval_match:
-            # a key/value data line
-            keyval_new_match = re.search(KEYVAL_NEW_REGEX, line)
-            section_keyval_match = re.search(SECTION_KEYVAL_REGEX, line)
-            if section_keyval_match:
-              this_section = section_keyval_match.group(1)
-              field = section_keyval_match.group(2)
-              values_str = section_keyval_match.group(3)
-            elif keyval_new_match:
-              this_section = section
-              field = keyval_new_match.group(1)
-              values_str = keyval_new_match.group(2)
-            else:
-              this_section = section
-              field = keyval_match.group(1)
-              values_str = keyval_match.group(2)
-            values = self._parse_values(values_str)
-            if this_section == 'meta':
-              this_account = None
-            else:
-              this_account = account
-            self._safe_add(entry, (this_account, this_section, field), values)
-          elif flag_match:
-            field = flag_match.group(1)
-            self._safe_add(entry, (account, section, field), {True:[]})
-          elif '=' * 20 in line or '-' * 20 in line:
-            # heading divider
-            pass
+def parse(lines):
+  """A generator to parse the accounts file, line by line.
+  Provide a file-like object, a list of lines, or anything else that can be
+  iterated through to produce lines."""
+  # Parse the file, line by line, using a state machine.
+  state = 'start'
+  section = None
+  subsection = None
+  entry = None
+  line_num = 0
+  for line_raw in lines:
+    line_num += 1
+    # All trailing whitespace is ignored.
+    line = line_raw.rstrip()
+    # Ignore # comments.
+    if line.lstrip().startswith('#'):
+      continue
+    # Make sure we're in the right section.
+    if line.startswith('=====') and line.count('=') >= 70:
+      if state == 'section_label':
+        state = 'section_end'
+      else:
+        state = 'section_start'
+    elif state == 'section_start':
+      if line.startswith('>>'):
+        state = 'section_label'
+        section = line.lstrip('>').lower()
+      else:
+        raise FormatError('Expected ">>" section label after "=====" line, at line {}:\n{}'
+                          .format(line_num, line_raw))
+    elif section == 'online':
+      # Make sure we're in the right subsection.
+      if line.startswith('-----') and line.count('-') >= 70:
+        if state == 'subsection_label':
+          state = 'subsection_end'
+        else:
+          state = 'subsection_start'
+      elif state == 'subsection_start':
+        if line.startswith('>'):
+          state = 'subsection_label'
+          subsection = line.lstrip('>').lower()
+        else:
+          raise FormatError('Expected ">" subsection label after "-----" line, at line {}:\n{}'
+                            .format(line_num, line_raw))
+      elif subsection == 'accounts':
+        # Parse the actual accounts info.
+        if line.endswith(':') and not (line.startswith('\t') or line.startswith(' ')):
+          # We're at the start of a new entry.
+          state = 'entry_heading'
+          # Return the last account and start a new one.
+          if entry is not None:
+            yield entry
+          entry_name = line.rstrip(':')
+          entry = Entry(entry_name)
+        elif line.startswith('\t') or line.startswith(' '):
+          # We're inside an entry, on an indented line.
+          # Strip the indentation.
+          line = line.lstrip('\t ')
+          if line.startswith('{account') and line.endswith('}'):
+            # We're at a new account label.
+            account_str = line[8:-1]
+            try:
+              account_num = int(account_str.strip())
+            except ValueError:
+              account_num = account_str.strip()
+            entry.account = account_num
+            entry.section = Entry.default_section
+          elif line.startswith('[') and line.endswith(']'):
+            # We're at a new section label.
+            section_str = line[1:-1]
+            entry.section = section_str
+          elif line.startswith('**') and line.endswith('**'):
+            # We're at a entry-level **flag**
+            flag = line[2:-2]
+            entry.flags.add(flag)
           else:
-            # Test for special case lines
-            qln_match = re.search(QLN_LINE_REGEX, line)
-            cc_line_match = re.search(CC_LINE_REGEX, line)
-            url_line_match = re.search(URL_LINE_REGEX, line)
-            site_last_match = re.search(SITE_REGEX, last_line)
-            if url_line_match and site_last_match:
-              # URL on line after entry heading
-              entry.site_alias = site_last_match.group(1)
-              entry.site = url_line_match.group(1)
-            elif qln_match:
-              # "QLN"-type shorthand
-              if strict:
-                message = 'Strict mode error: QLN line'
-                self.errors.append(
-                  {'message':message, 'line':line_num, 'data':line}
-                )
+            # We're at a key/value line (or a [section] key/value one-liner).
+            fields = line.split('\t')
+            if len(fields) < 2:
+              raise FormatError('Expected key/value delimited by tabs at line {}:\n{}'
+                                .format(line_num, line_raw))
+            elif len(fields) >= 3 and fields[0].startswith('[') and fields[0].endswith(']'):
+              # It's a one-liner [section] key: value.
+              section_str = fields[0][1:-1]
+              if fields[1].endswith(':'):
+                key = fields[1][:-1]
               else:
-                self._add_qln(entry, account, section)
-            elif cc_line_match:
-              # "stored credit card" note
-              if strict:
-                message = 'Strict mode error: nonconforming credit card line'
-                self.errors.append(
-                  {'message':message, 'line':line_num, 'data':line}
-                )
+                raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
+              values_str = fields[-1]
+              values = _parse_values(values_str)
+              if section_str == Entry.meta_section:
+                entry.add_meta_values(key, values)
               else:
-                entry[(account, section, 'used credit card')] = {True:[]}
-            elif re.search(r'^\S', line):
-              # If it's not indented, take the safe route and assume it could be
-              # an unrecognized entry header. That means we no longer know which
-              # entry we're in.
-              entry = None
-              message = 'Line is like an entry header, but malformed'
-              self.errors.append(
-                {'message':message, 'line':line_num, 'data':line}
-              )
+                entry.add_section_values(section_str, key, values)
             else:
-              # Unrecognized.
-              message = 'Unrecognized line'
-              self.errors.append(
-                {'message':message, 'line':line_num, 'data':line}
-              )
+              # It's a normal key: value line.
+              key_str = fields[0]
+              values_str = fields[-1]
+              if key_str.endswith(':'):
+                key = key_str.rstrip(':')
+              else:
+                raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
+              values = _parse_values(values_str)
+              if entry.section == Entry.meta_section:
+                entry.add_meta_values(key, values)
+              else:
+                entry.add_values(key, values)
+        elif line.strip():
+          raise FormatError('Expected entry header, account or section label, or key/value at line '
+                            '{}:\n{}'.format(line_num, line_raw))
+  yield entry
 
-        last_line = line
 
-    if top_level is None:
-      message = 'Found no top-level section headings'
-      self.errors.append(
-        {'message':message, 'line':None, 'data':None}
-      )
-
-
-  def _parse_values(self, values_str):
-    """Parse out values and flags from the string in the file.
-    Returns a dict mapping values to lists of their flags."""
-    values = collections.OrderedDict()
-    for value_str in values_str.split(';'):
-      flags = re.findall(FLAG_REGEX, value_str)
+def _parse_values(values_str):
+  values_strs = values_str.split(';')
+  values = []
+  for value_str in values_strs:
+    # The one use of regex :(
+    flags = re.findall(FLAG_REGEX, value_str)
+    if flags:
       match = re.search(VALUE_REGEX, value_str)
       if match:
-        value = match.group(1)
+        value = Value(match.group(1))
       else:
-        value = value_str.strip()
-      values[value] = flags
-    return values
-
-
-  def _safe_add(self, entry, key, value):
-    """Add key/value only if it doesn't already exist in the entry.
-    If it does, don't overwrite it and add an error instead."""
-    if key in entry:
-      message = 'Duplicate key, section, or account'
-      self.errors.append(
-        {'message':message, 'line':line_num, 'data':line}
-      )
-      return False
+        raise FormatError('Malformed key/value line. Failed on values "{}"'.format(values_str))
     else:
-      entry[key] = value
-      return True
+      value = Value(value_str.strip())
+    for flag in flags:
+      value.flags.add(flag)
+    values.append(value)
+  return values
 
 
-  def _add_qln(self, entry, account, section):
-    entry[(account, section, 'username')] = {'qwerty0':[]}
-    entry[(account, section, 'password')] = {'least secure':[]}
-    entry[(account, section, 'email')] = {'nmapsy':[]}
-
-
-#TODO: Keep the actual keys (or hell, all the data) in self._accounts, by
-#      making each account an OrderedDict mapping sections to either lists of
-#      fields or OrderedDicts mapping fields to values (to store all the data).
-#      This is what will allow looking up the data in an account or section
-#      without reading through all the keys.
-class AccountsEntry(collections.OrderedDict):
-  """Keys must be either the field name string or a tuple of the account number,
-  the section name, and the field name."""
-  def __init__(self):
-    super(AccountsEntry, self).__init__()
-    self.site = None
-    self.site_alias = None
-    self.site_url = None
-    self.default_account = 0
-    self.default_section = 'default'
-    # Keep track of the accounts and sections that exist in this entry
-    # It's a dict of accounts mapped to lists of sections. It looks like:
-    # {0:['default', 'old'], 1:['default']}
-    self._accounts = collections.OrderedDict()
-
+class Entry(object):
+  default_account = 0
+  default_section = 'default'
+  meta_section = 'meta'
+  def __init__(self, name, account=-1, section=None):
+    self.name = name
+    if account == -1:
+      self.account = Entry.default_account
+    else:
+      self.account = account
+    if section is None:
+      self.section = Entry.default_section
+    else:
+      self.section = section
+    self.accounts = collections.OrderedDict()
+    self.urls = []
+    self.keys = []
+    self.app = []
+  @property
+  def url(self):
+    if len(self.urls) > 0:
+      return self.urls[0]
+  @property
+  def flags(self):
+    return self._get_section(self.account, self.section).flags
+  @flags.setter
+  def flags(self, flags):
+    self._get_section(self.account, self.section).flags = flags
+  def _get_section(self, account_num, section_name):
+    try:
+      account = self.accounts[account_num]
+    except KeyError:
+      account = Account(account_num, section=section_name)
+      self.accounts[account_num] = account
+    try:
+      return account[section_name]
+    except KeyError:
+      section = Section(section_name)
+      account[section_name] = section
+      return section
+  def _set_values(self, account_num, section_name, key, values):
+    """The basic set value implementation used by all other methods of setting values."""
+    try:
+      account = self.accounts[account_num]
+    except KeyError:
+      account = Account(account_num, section=section_name)
+      self.accounts[account_num] = account
+    try:
+      section = account[section_name]
+    except KeyError:
+      section = Section(section_name)
+      account[section_name] = section
+    section[key] = values
   def __getitem__(self, key):
-    full_key = self.get_full_key(key)
-    return collections.OrderedDict.__getitem__(self, full_key)
-
-  def __setitem__(self, key, value):
-    (account, section, field) = self.get_full_key(key)
-    sections = self._accounts.get(account, [])
-    if section not in sections:
-      sections.append(section)
-    self._accounts[account] = sections
-    collections.OrderedDict.__setitem__(self, (account, section, field), value)
-
-  def __contains__(self, key):
-    full_key = self.get_full_key(key)
-    return collections.OrderedDict.__contains__(self, full_key)
-
-  def update(self):
-    raise NotImplementedError
-
-  def get_full_key(self, key):
-    """Return a proper, full key for indexing the dict.
-    If the input is a string, assume the default account and section.
-    If it's a proper 3-tuple, return it unaltered.
-    If it's neither, throw an assertion error."""
-    #TODO: allow other tuple-like types?
-    is_str = isinstance(key, basestring)
-    is_proper_tuple = (
-      isinstance(key, tuple) and len(key) == 3
-      and (isinstance(key[0], int) or key[0] is None)
-      and isinstance(key[1], basestring)
-      and isinstance(key[2], basestring)
-    )
-    assert is_str or is_proper_tuple, (
-      '"key" must either be a str or tuple of (account, section, fieldname).'
-    )
-    if is_str:
-      full_key = (self.default_account, self.default_section, key)
+    """Retrieve an account or value using entry[key] notation.
+    If key is None or an int, it will be used as a key to retrieve an account.
+    Otherwise, it will be used as a key for the current section in the current account, to return
+    a list of Values."""
+    if key is None or isinstance(key, int):
+      return self.accounts[key]
     else:
-      full_key = key
-    return full_key
+      account = self.accounts[self.account]
+      section = account[self.section]
+      return section.get(key)
+  def __setitem__(self, key, value):
+    """The entry[key] = value notation.
+    If key is None or an int, it is interpreted as an accounts key.
+    Otherwise, it is interpreted as a key for the current section in the current account.
+    key and value must then be strings. This will auto-create a list of Values from the value
+    string."""
+    if key is None or isinstance(key, int):
+      self.accounts[key] = value
+    else:
+      self._set_values(self.account, self.section, key, [Value(value)])
+  def add_values(self, key, values):
+    """Set the values for a key, using a manually created list of Values."""
+    if len(values) > 0 and not isinstance(values[0], Value):
+      raise ValueError('values must be a list of Value objects.')
+    self._set_values(self.account, self.section, key, values)
+  def add_section_value(self, section, key, value):
+    """Set a value for a key, but for the given section, not the current one.
+    value should be a string. A list of Values will be auto-created from it.
+    Does not affect the current section of the Entry object."""
+    self._set_values(self.account, section, key, [Value(value)])
+  def add_section_values(self, section, key, values):
+    """Set a value for a key, but for the given section, not the current one.
+    Does not affect the current section of the Entry object."""
+    self._set_values(self.account, section, key, values)
+  def add_meta_values(self, key, values):
+    if key == 'urls':
+      self.urls = [value.value for value in values]
+    elif key == 'keys':
+      self.keys = [value.value for value in values]
+    elif key == 'app':
+      self.app = [value.value for value in values]
+    self._set_values(None, Entry.meta_section, key, values)
+  def __str__(self):
+    output = self.name+':'
+    if None in self.accounts:
+      output += str(self.accounts[None])
+    if Entry.default_account in self.accounts:
+      output += str(self.accounts[Entry.default_account])
+    for account in self.accounts.values():
+      if account.number in (None, Entry.default_account):
+        continue
+      output += '\n'+str(account)
+    return output
 
-  def accounts(self):
-    """Return a tuple of the account numbers in the entry."""
-    return tuple(self._accounts.keys())
+class Account(collections.OrderedDict):
+  def __init__(self, number, section=Entry.default_section):
+    super(Account, self).__init__()
+    self.number = number
+    self.section = section
+  def __str__(self):
+    if self.number in (None, Entry.default_account):
+      output = ''
+    else:
+      output = '    {account'+str(self.number)+'}'
+    for section in self.values():
+      if section.name in (Entry.default_section, Entry.meta_section):
+        output += str(section)
+      else:
+        output += '\n'+str(section)
+    return output
+  def __repr__(self):
+    return 'Account {} (sections {})'.format(self.number, ', '.join(self.keys()))
 
-  def sections(self, account):
-    """Return a tuple of the sections in the account.
-    Returns () if the account doesn't exist."""
-    return tuple(self._accounts.get(account, ()))
+class Section(collections.OrderedDict):
+  def __init__(self, name):
+    super(Section, self).__init__()
+    self.name = name
+    self.flags = set()
+  def __str__(self):
+    if self.name in (Entry.default_section, Entry.meta_section):
+      output = ''
+    else:
+      output = '\t['+self.name+']'
+    for flag in self.flags:
+      output += '\n\t**'+flag+'**'
+    for key, values in self.items():
+      values_str = '; '.join(map(str, values))
+      if self.name == Entry.meta_section:
+        output += '\n\t[{}]\t{}:\t{}'.format(self.name, key, values_str)
+      else:
+        output += '\n\t{}:\t{}'.format(key, values_str)
+    return output
+  def __repr__(self):
+    return 'Section "'+self.name+'"'
 
-  def keys(self, account=None, section=None):
-    if account is None and section is None:
-      return collections.OrderedDict.keys(self)
-    keys = []
-    for key in collections.OrderedDict.keys(self):
-      if account == key[0] and (section == key[1] or section is None):
-        keys.append(key)
-    return keys
-
-  def items(self, account=None, section=None):
-    if account is None and section is None:
-      return collections.OrderedDict.items(self)
-    items = []
-    # use .keys() implementation to handle which items to get
-    for key in self.keys(account=account, section=section):
-      items.append((key, self[key]))
-    return items
+class Value(object):
+  def __init__(self, value, flags=[]):
+    self.value = value
+    self.flags = set(flags)
+  def __str__(self):
+    output = self.value
+    for flag in self.flags:
+      output += ' **{}**'.format(flag)
+    return output
+  def __repr__(self):
+    output = "{}.{}('{}'".format(type(self).__module__, type(self).__name__, self.value)
+    if self.flags:
+      return output + ', flags={})'.format(list(self.flags))
+    else:
+      return output + ')'
+  def __eq__(self, value):
+    if isinstance(value, Value):
+      if value.value == self.value and value.flags == self.flags:
+        return True
+      else:
+        return False
+    else:
+      return value == self.value
