@@ -4,7 +4,7 @@ import re
 import collections
 
 FLAG_REGEX = r'\s\*\*([^*]+)\*\*'
-VALUE_REGEX = r'^\s*(\S.*)\s+\*\*[^*]+\*\*'
+VALUE_REGEX = r'^\s*(\S.*?)\s+\*\*[^*]+\*\*'
 
 class FormatError(Exception):
   def __init__(self, message=None):
@@ -77,6 +77,7 @@ def parse(lines):
             except ValueError:
               account_num = account_str.strip()
             entry.account = account_num
+            entry.section = Entry.default_section
           elif line.startswith('[') and line.endswith(']'):
             # We're at a new section label.
             section_str = line[1:-1]
