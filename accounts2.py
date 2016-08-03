@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
+from __future__ import print_function
 import os
 import sys
 import argparse
@@ -21,6 +22,10 @@ def main():
 
   parser.add_argument('accounts_path', nargs='?',
     help='Default: '+ACCOUNTS_PATH_DEFAULT)
+  parser.add_argument('-e', '--entry',
+    help='Print the entry with this name.')
+  parser.add_argument('-E', '--entry-fuzzy',
+    help='Print all entries with this string in the name (case-insensitive).')
   parser.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
     help='Keys to select. Will only print the key: value line. If there are multiple values, it '
          'will print them on multiple lines, repeating the key name (perfect for sort | uniq). '
@@ -41,36 +46,37 @@ def main():
   with open(accounts_path) as accounts_file:
     for entry in accountslib2.parse(accounts_file):
       if args.print_all:
-        print entry.name+':'
-      for account in entry.accounts.values():
-        # if account != entry.default_account:
-        if args.print_all:
-          print "  {account"+str(account.number)+"}"
-        for section in account.sections.values():
-          if args.print_all:
-            print "    ["+section.name+"]"
-          for key, values in section.items():
-            if args.keys:
-              if key in args.keys:
-                for value in values:
-                  print_value = False
-                  if args.flag:
-                    if args.flag in value.flags:
+        print(entry)
+        print()
+      elif args.entry:
+        if entry.name == args.entry:
+          print(entry)
+      elif args.entry_fuzzy:
+        if args.entry_fuzzy.lower() in entry.name.lower():
+          print(entry)
+      else:
+        for account in entry.accounts.values():
+          # if account != entry.default_account:
+          for section in account.sections.values():
+            for key, values in section.items():
+              if args.keys:
+                if key in args.keys:
+                  for value in values:
+                    print_value = False
+                    if args.flag:
+                      if args.flag in value.flags:
+                        print_value = True
+                    else:
                       print_value = True
-                  else:
-                    print_value = True
-                  if print_value:
-                    print "\t{}:\t{}".format(key, value)
-            elif args.print_all:
-              print "\t{}:\t{}".format(key, format_values(values))
-            elif args.flag:
-              output_values = []
-              for value in values:
-                if args.flag in value.flags:
-                  flags_str = ' '.join(['**{}**'.format(flag) for flag in value.flags])
-                  output_values.append(str(value)+' '+flags_str)
-              if output_values:
-                print '\t{}:\t{}'.format(key, '; '.join(output_values))
+                    if print_value:
+                      print("\t{}:\t{}".format(key, value))
+              elif args.flag:
+                output_values = []
+                for value in values:
+                  if args.flag in value.flags:
+                    output_values.append(str(value))
+                if output_values:
+                  print('\t{}:\t{}'.format(key, '; '.join(output_values)))
 
 
 def format_values(values):
