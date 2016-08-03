@@ -101,7 +101,7 @@ def parse(lines):
                 raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
               values_str = fields[-1]
               values = _parse_values(values_str)
-              if section_str == 'meta':
+              if section_str == Entry.meta_section:
                 entry.add_meta_values(key, values)
               else:
                 entry.add_section_values(section_str, key, values)
@@ -114,7 +114,7 @@ def parse(lines):
               else:
                 raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
               values = _parse_values(values_str)
-              if entry.section == 'meta':
+              if entry.section == Entry.meta_section:
                 entry.add_meta_values(key, values)
               else:
                 entry.add_values(key, values)
@@ -145,10 +145,19 @@ def _parse_values(values_str):
 
 
 class Entry(object):
-  def __init__(self, name, account=0, section='default'):
+  default_account = 0
+  default_section = 'default'
+  meta_section = 'meta'
+  def __init__(self, name, account=-1, section=None):
     self.name = name
-    self.account = account
-    self.section = section
+    if account == -1:
+      self.account = Entry.default_account
+    else:
+      self.account = account
+    if section is None:
+      self.section = Entry.default_section
+    else:
+      self.section = section
     self.accounts = collections.OrderedDict()
     self.accounts[self.account] = Account(self.account, section=self.section)
     self.urls = []
@@ -209,15 +218,37 @@ class Entry(object):
       self.keys = [value.value for value in values]
     elif key == 'app':
       self.app = [value.value for value in values]
-    self._set_values(None, 'meta', key, values)
+    self._set_values(None, Entry.meta_section, key, values)
+  def __str__(self):
+    output = self.name+':'
+    if None in self.accounts:
+      output += str(self.accounts[None])
+    if Entry.default_account in self.accounts:
+      output += str(self.accounts[Entry.default_account])
+    for account in self.accounts.values():
+      if account.number in (None, Entry.default_account):
+        continue
+      output += '\n'+str(account)
+    return output
 
 class Account(object):
-  def __init__(self, number, section='default'):
+  def __init__(self, number, section=Entry.default_section):
     self.number = number
     self.section = section
     self.sections = collections.OrderedDict()
     self.sections[self.section] = Section(self.section)
   def __str__(self):
+    if self.number in (None, Entry.default_account):
+      output = ''
+    else:
+      output = '    {account'+str(self.number)+'}'
+    for section in self.sections.values():
+      if section.name in (Entry.default_section, Entry.meta_section):
+        output += str(section)
+      else:
+        output += '\n'+str(section)
+    return output
+  def __repr__(self):
     return 'Account {} (sections {})'.format(self.number, ', '.join(self.sections.keys()))
 
 class Section(collections.OrderedDict):
@@ -226,13 +257,34 @@ class Section(collections.OrderedDict):
     self.flags = set()
     super(Section, self).__init__()
   def __str__(self):
+    if self.name in (Entry.default_section, Entry.meta_section):
+      output = ''
+    else:
+      output = '\t['+self.name+']'
+    for flag in self.flags:
+      output += '\n\t**'+flag+'**'
+    for key, values in self.items():
+      values_str = '; '.join(map(str, values))
+      if self.name == Entry.meta_section:
+        output += '\n\t[{}]\t{}:\t{}'.format(self.name, key, values_str)
+      else:
+        output += '\n\t{}:\t{}'.format(key, values_str)
+    return output
+  def __repr__(self):
     return 'Section "'+self.name+'"'
 
 class Value(object):
-  def __init__(self, value):
+  def __init__(self, value, flags=[]):
     self.value = value
-    self.flags = set()
+    self.flags = set(flags)
   def __str__(self):
-    return self.value
+    output = self.value
+    for flag in self.flags:
+      output += ' **{}**'.format(flag)
+    return output
   def __repr__(self):
-    return "{}.{}('{}')".format(type(self).__module__, type(self).__name__, self.value)
+    output = "{}.{}('{}'".format(type(self).__module__, type(self).__name__, self.value)
+    if self.flags:
+      return output + ', flags={})'.format(list(self.flags))
+    else:
+      return output + ')'
