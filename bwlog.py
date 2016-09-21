@@ -4,6 +4,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import logging
 import argparse
 from lib import simplewrap
 from lib import ipwraplib
@@ -11,14 +12,14 @@ from lib import console
 
 UPTIME_PATH = '/proc/uptime'
 ARG_DEFAULTS = {'status_path':'/proc/net/dev', 'watch_interfaces':'', 'ignore_interfaces':'lo',
-                'last_file':os.path.expanduser('~/.local/share/nbsdata/bwlast.tsv')}
+                'last_file':os.path.expanduser('~/.local/share/nbsdata/bwlast.tsv'),
+                'log':sys.stderr, 'log_level':logging.ERROR}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = ('Print bandwidth usage in the current observation window. Uses '+
-ARG_DEFAULTS['status_path']+' by default to monitor the bandwidth use of each interface. It will '
-'parse that pseudo-file, log the current numbers to '+ARG_DEFAULTS['last_file']+' if requested, '
-'and print the change since the start of the observation period. By default, it will only print '
-'information on the currently active interface (the default route). If --no-default is given, it '
-'will print a line for every interface.'+"""
+DESCRIPTION = """Print bandwidth usage in the current observation window. Uses {status_path} by
+default to monitor the bandwidth use of each interface. It will parse that pseudo-file, log the
+current numbers to {last_file} if requested, and print the change since the start of the observation
+period. By default, it will only print information on the currently active interface (the default
+route). If --no-default is given, it will print a line for every interface.
 Each line consists of 7 tab-delimited columns:
 1. Current Unix timestamp
 2. Seconds since the start of the observation period
@@ -28,7 +29,7 @@ Each line consists of 7 tab-delimited columns:
 6. Bytes received in this period
 7. Bytes sent in this period
 8. Received rate in this period (bytes/sec)
-9. Sent rate in this period (bytes/sec).""")
+9. Sent rate in this period (bytes/sec).""".format(**ARG_DEFAULTS)
 
 
 def main(argv):
@@ -65,8 +66,16 @@ def main(argv):
   parser.add_argument('-I', '--ignore-interfaces',
     help='If --no-default is given, this specifies interfaces to ignore (comma-delimited). '
          'Default: "%(default)s"')
+  parser.add_argument('-L', '--log', type=argparse.FileType('w'),
+    help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
+  parser.add_argument('-q', '--quiet', dest='log_level', action='store_const', const=logging.CRITICAL,
+    help='Print messages only on critical errors.')
+  parser.add_argument('--debug', dest='log_level', action='store_const', const=logging.DEBUG)
 
   args = parser.parse_args(argv[1:])
+
+  tone_down_logger()
+  logging.basicConfig(stream=args.log, level=args.log_level, format='%(message)s')
 
   # Read in and parse watch/ignored interfaces.
   ifaces_watch = []
@@ -110,28 +119,40 @@ def main(argv):
       interface = fields[0].strip()
       if args.no_default:
         if interface in ifaces_ignore:
-          sys.stderr.write('line {}: ignoring interface {}.\n'.format(line_num, interface))
+          logging.info('line {}: ignoring interface {}.'.format(line_num, interface))
           continue
         if ifaces_watch and interface not in ifaces_watch:
-          sys.stderr.write('line {}: not watching interface {}.\n'.format(line_num, interface))
+          logging.info('line {}: not watching interface {}.'.format(line_num, interface))
           continue
       elif interface != default_interface:
         continue
       fields = fields[1].split()
       if len(fields) != 16:
-        sys.stderr.write('line {}: only {} fields.\n'.format(line_num, len(fields)))
+        logging.warn('line {}: only {} fields.'.format(line_num, len(fields)))
         continue
       try:
         received = int(fields[0])
         sent = int(fields[8])
       except ValueError:
-        sys.stderr.write('line {}: invalid int(s): "{}" and/or "{}".\n'
-                         .format(line_num, fields[0], fields[8]))
+        logging.warn('line {}: invalid int(s): "{}" and/or "{}".'
+                     .format(line_num, fields[0], fields[8]))
         continue
       try:
         last_received, last_sent = last[interface]
       except KeyError:
         last_received, last_sent = (0, 0)
+      if received < last_received:
+        logging.error('Last recv > current recv: {} > {}'.format(last_received, received))
+        continue
+      if sent < last_sent:
+        logging.error('Last recv > current recv: {} > {}'.format(last_received, received))
+        continue
+      if received == 0:
+        logging.error('recv is 0.')
+        continue
+      if sent == 0:
+        logging.error('sent is 0.')
+        continue
       received_since = received - last_received
       sent_since = sent - last_sent
       received_rate = received_since/elapsed
@@ -146,6 +167,7 @@ def main(argv):
         mac = '.'
       print(int(round(now)), int(round(elapsed)), interface, mac, ssid, received_since, sent_since,
             int(round(received_rate)), int(round(sent_rate)), sep='\t')
+      logging.debug('{}:\t{} recv\t{} sent'.format(interface, received, sent))
       if args.update:
         last_file.write('{}\t{}\t{}\n'.format(interface, received, sent))
   if args.update:
@@ -183,9 +205,13 @@ def get_uptime(uptime_path):
       pass
 
 
-def fail(message):
-  sys.stderr.write(message+"\n")
-  sys.exit(1)
+def tone_down_logger():
+  """Change the logging level names from all-caps to capitalized lowercase.
+  E.g. "WARNING" -> "Warning" (turn down the volume a bit in your log files)"""
+  for level in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG):
+    level_name = logging.getLevelName(level)
+    logging.addLevelName(level, level_name.capitalize())
+
 
 if __name__ == '__main__':
   sys.exit(main(sys.argv))
