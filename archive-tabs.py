@@ -15,15 +15,15 @@ session_manager = __import__('session-manager')
 API_DOMAIN = 'api.pinboard.in'
 GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'.encode('utf8')
 ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'.encode('utf8')
-MAX_RESPONSE = 4096 # bytes
-SLEEP_TIME = 3.1
+MAX_RESPONSE = 16384 # bytes
+SLEEP_TIME = 3.05 # seconds
 ARG_DEFAULTS = {}
 USAGE = "%(prog)s [options]"
 DESCRIPTION = """Bookmark open tabs from a Firefox session with Pinboard."""
 
 # API documentation: https://pinboard.in/api
 # Get the auth token from https://pinboard.in/settings/password
-# Limit: 1 request per 3 seconds. Check for 429 Too Many Requests response.
+# API rate limit: 1 request per 3 seconds. Will get 429 Too Many Requests if exceeded.
 
 def main(argv):
 
@@ -47,6 +47,7 @@ def main(argv):
          'the title, but it must be unique. If not given, will stop at the last tab.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'),
     help='Write a log of tabs archived to this file.')
+  parser.add_argument('-d', '--debug', action='store_true')
 
   args = parser.parse_args(argv[1:])
 
@@ -106,6 +107,8 @@ def main(argv):
   print('Found {} tabs to archive.\n'.format(len(tabs)))
 
   for tab in tabs:
+    if not tab['title']:
+      tab['title'] = '.'
     print('\t'.encode('utf8')+tab['title'][:91])
     if not args.simulate:
       request_path = GET_API_PATH.format(token=args.auth_token, url=quote(tab['url']))
@@ -113,20 +116,26 @@ def main(argv):
       done = check_response(response, 'get')
       if done:
         print('Tab already bookmarked. Skipping.')
-        time.sleep(SLEEP_TIME)
-        continue
-      request_path = ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
-                                         title=quote(tab['title']))
-      response = make_request(API_DOMAIN, request_path)
-      success = check_response(response, 'add')
-      if success:
-        print('success')
-        if args.log:
-          args.log.write(tab['title'])
-          args.log.write('\n')
       else:
-        print('FAILED')
-        sys.exit(1)
+        request_path = ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
+                                           title=quote(tab['title']))
+        if args.debug:
+          print('https://'+API_DOMAIN+request_path)
+        response = make_request(API_DOMAIN, request_path)
+        success = check_response(response, 'add')
+        if success:
+          print('success')
+        else:
+          print('FAILED')
+          sys.exit(1)
+      if args.log:
+        if done:
+          result = 'done'
+        elif success:
+          result = 'bookmarked'
+        else:
+          result = 'FAILED'
+        args.log.write('{}\t{}\t{}\n'.encode('utf8').format(result, tab['title'], tab['url']))
       time.sleep(SLEEP_TIME)
 
 
@@ -146,10 +155,10 @@ def check_response(response, request_type):
     # API rate limit reached.
     fail('Error: API rate limit reached (429 Too Many Requests).')
   response_body = response.read(MAX_RESPONSE)
-  if request_type == 'add':
-    return parse_add_response(response_body)
-  elif request_type == 'get':
+  if request_type == 'get':
     return parse_get_response(response_body)
+  elif request_type == 'add':
+    return parse_add_response(response_body)
 
 
 def parse_get_response(response_body):
@@ -157,7 +166,7 @@ def parse_get_response(response_body):
   try:
     root = xml.etree.ElementTree.fromstring(response_body)
   except xml.etree.ElementTree.ParseError:
-    fail('Error: Parsing error in response from API:\n'+response_body)
+    fail('Error 1: Parsing error in response from API:\n'+response_body)
   if root.tag == 'posts':
     if len(root) == 0:
       return False
@@ -166,28 +175,38 @@ def parse_get_response(response_body):
     else:
       fail('Error: Too many hits when checking if tab is already bookmarked: {} hits'
            .format(len(root)))
-  elif root.tag == 'result' and root.attrib.get('code') == 'something went wrong':
-    fail('Error: Request failed when checking if tab is already bookmarked.')
+  elif root.tag == 'result':
+    if root.attrib.get('code') == 'something went wrong':
+      fail('Error: Request failed when checking if tab is already bookmarked.')
+    elif root.attrib.get('code') == 'done':
+      fail('Error: "done" returned instead of result when checking if tab is already bookmarked.')
+    elif 'code' in root.attrib:
+      fail('Error: Received message "{}" when checking if tab is already bookmarked.'
+           .format(root.attrib['code']))
+    else:
+      fail('Error 1: Unrecognized response from API:\n'+response_body)
   else:
-    fail('Error: Unrecognized response from API:\n'+response_body)
+    fail('Error 2: Unrecognized response from API:\n'+response_body)
 
 
 def parse_add_response(response_body):
   try:
     root = xml.etree.ElementTree.fromstring(response_body)
   except xml.etree.ElementTree.ParseError:
-    fail('Error: Parsing error in response from API:\n'+response_body)
+    fail('Error 2: Parsing error in response from API:\n'+response_body)
   if root.tag == 'result':
     try:
       result = root.attrib['code']
     except KeyError:
-      fail('Error: Unrecognized response from API:\n'+response_body)
+      fail('Error 3: Unrecognized response from API:\n'+response_body)
     if result == 'done':
       return True
     elif result == 'something went wrong':
       return False
+    else:
+      fail('Error: Received message "{}" when adding bookmark.'.format(result))
   else:
-    fail('Error: Unrecognized response from API:\n'+response_body)
+    fail('Error 4: Unrecognized response from API:\n'+response_body)
 
 
 def fail(message):
