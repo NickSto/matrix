@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 import sys
 import json
+import errno
 import argparse
 
 ARG_DEFAULTS = {'format':'human'}
@@ -39,12 +40,7 @@ def main(argv):
   elif args.urls:
     summary_only = False
 
-  line_num = 0
-  with open(args.session, 'rU') as session_file:
-    for line in session_file:
-      line_num += 1
-      if line_num == 5:
-        session = json.loads(line)
+  session = file_to_json(args.session)
 
   tab_counts = []
   for window in session['windows']:
@@ -52,14 +48,13 @@ def main(argv):
       print('Window {}: {} tabs'.format(len(tab_counts)+1, len(window['tabs'])))
     tab_counts.append(len(window['tabs']))
     tab_num = 0
-    for tab in window['tabs']:
+    for tab in get_tabs(window):
       tab_num += 1
-      last_history_item = tab['entries'][-1]
-      title = last_history_item.get('title', '')
-      url = last_history_item.get('url')
+      title = tab['title']
+      url = tab['url']
       if args.format == 'human':
         if args.titles:
-          print('  '.encode('utf-8')+title.encode('utf-8'))
+          print('  '.encode('utf-8')+title)
         if args.urls:
           print('    '+url)
       elif args.format == 'tsv':
@@ -67,7 +62,7 @@ def main(argv):
         if args.urls:
           output.append(url)
         if args.titles:
-          output.append(title.encode('utf-8'))
+          output.append(title)
         if output:
           print(*output, sep='\t')
     if args.format == 'human' and not summary_only:
@@ -80,9 +75,26 @@ def main(argv):
       print(*tab_counts, sep='\t')
 
 
-def fail(message):
-  sys.stderr.write(message+"\n")
-  sys.exit(1)
+def file_to_json(path):
+  line_num = 0
+  with open(path, 'rU') as session_file:
+    for line in session_file:
+      line_num += 1
+      if line_num == 5:
+        return json.loads(line)
+
+
+def get_tabs(window):
+  for tab in window['tabs']:
+    last_history_item = tab['entries'][-1]
+    title = last_history_item.get('title', '').encode('utf-8')
+    url = last_history_item.get('url')
+    yield {'title':title, 'url':url}
+
 
 if __name__ == '__main__':
-  sys.exit(main(sys.argv))
+  try:
+    sys.exit(main(sys.argv))
+  except IOError as ioe:
+    if ioe.errno != errno.EPIPE:
+      raise
