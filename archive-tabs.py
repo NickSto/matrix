@@ -38,6 +38,11 @@ def main(argv):
   parser.add_argument('-n', '--simulate', action='store_true',
     help='Only simulate the process, printing the tabs which will be archived but without actually '
          'doing it.')
+  parser.add_argument('-w', '--window',
+    help='Specify the window to look for tabs in, instead of the default (the biggest window). '
+         'Format: WindowNum:NumTabs (e.g. "2:375"). The two, colon-delimited numbers are the '
+         'window number, as given by session-manager.py, and the number of tabs in it (to make '
+         'sure we\'re talking about the right window).')
   parser.add_argument('-b', '--begin',
     help='The title of the tab to start archiving at (inclusive). You can use just the '
          'beginning of the title, but it must be unique. If not given, will start with the first '
@@ -56,14 +61,24 @@ def main(argv):
 
   session = session_manager.file_to_json(args.session)
 
-  max_tabs = 0
-  biggest_window = None
-  for window in session['windows']:
-    num_tabs = len(list(session_manager.get_tabs(window)))
-    if num_tabs > max_tabs:
-      max_tabs = num_tabs
-      biggest_window = window
-  print('Found biggest window: {} tabs.'.format(max_tabs))
+  if args.window:
+    target_window, target_tabs = parse_window_spec(args.window)
+    window_num = 0
+    for window in session['windows']:
+      window_num += 1
+      if window_num == target_window:
+        num_tabs = len(list(session_manager.get_tabs(window)))
+        if num_tabs == target_tabs:
+          print('Found specified --window (number {}, with {} tabs).'
+                .format(target_window, target_tabs))
+          break
+        else:
+          fail('Error: Window that matches given --window number has wrong number of tabs '
+               '(--window gave {}, but window {} has {}).'.format(target_tabs, target_window,
+                                                                  num_tabs))
+  else:
+    window = get_biggest_window(session)
+    print('Found biggest window: {} tabs.'.format(len(list(session_manager.get_tabs(window)))))
 
   # Go through the tabs, determine which to archive.
   tabs = []
@@ -75,7 +90,7 @@ def main(argv):
     archiving = True
   begin = False
   end = False
-  for tab in session_manager.get_tabs(biggest_window):
+  for tab in session_manager.get_tabs(window):
     # Check when to start.
     if args.begin and tab['title'].startswith(args.begin):
       begin_matches.append(tab['title'])
@@ -137,6 +152,28 @@ def main(argv):
           result = 'FAILED'
         args.log.write('{}\t{}\t{}\n'.encode('utf8').format(result, tab['title'], tab['url']))
       time.sleep(SLEEP_TIME)
+
+
+def parse_window_spec(window_spec):
+  fields = window_spec.split(':')
+  assert len(fields) == 2, 'Invalid format for --window (must be 2 colon-delimited fields)'
+  try:
+    target_window = int(fields[0])
+    target_tabs = int(fields[1])
+  except ValueError:
+    fail('Invalid format for --window (WindowNum and NumTabs must be integers).')
+  return target_window, target_tabs
+
+
+def get_biggest_window(session):
+  max_tabs = 0
+  biggest_window = None
+  for window in session['windows']:
+    num_tabs = len(list(session_manager.get_tabs(window)))
+    if num_tabs > max_tabs:
+      max_tabs = num_tabs
+      biggest_window = window
+  return biggest_window
 
 
 def quote(string):
