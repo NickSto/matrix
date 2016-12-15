@@ -16,14 +16,12 @@ API_DOMAIN = 'api.pinboard.in'
 GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'.encode('utf8')
 ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'.encode('utf8')
 MAX_RESPONSE = 16384 # bytes
-SLEEP_TIME = 3.05 # seconds
-ARG_DEFAULTS = {}
+ARG_DEFAULTS = {'pause':3.05}
 USAGE = "%(prog)s [options]"
 DESCRIPTION = """Bookmark open tabs from a Firefox session with Pinboard."""
 
 # API documentation: https://pinboard.in/api
 # Get the auth token from https://pinboard.in/settings/password
-# API rate limit: 1 request per 3 seconds. Will get 429 Too Many Requests if exceeded.
 
 def main(argv):
 
@@ -50,6 +48,10 @@ def main(argv):
   parser.add_argument('-e', '--end',
     help='The title of the tab to end archiving at (inclusive). You can use just the beginning of '
          'the title, but it must be unique. If not given, will stop at the last tab.')
+  parser.add_argument('-p', '--pause', type=float,
+    help='How many seconds to wait in-between each request to the API. The policy in the '
+         'documentation (https://pinboard.in/api) is no more than 1 every 3 seconds. You should '
+         'get a 429 response if it\'s exceeded. Default: %(default)s.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'),
     help='Write a log of tabs archived to this file.')
   parser.add_argument('-d', '--debug', action='store_true')
@@ -125,13 +127,17 @@ def main(argv):
     if not tab['title']:
       tab['title'] = '.'
     print('\t'.encode('utf8')+tab['title'][:91])
+    if tab['url'].startswith('about:'):
+      print('about: tab. Skipping.')
+      continue
     if not args.simulate:
       request_path = GET_API_PATH.format(token=args.auth_token, url=quote(tab['url']))
       response = make_request(API_DOMAIN, request_path)
       done = check_response(response, 'get')
       if done:
         print('Tab already bookmarked. Skipping.')
-      else:
+      time.sleep(args.pause)
+      if not done:
         request_path = ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
                                            title=quote(tab['title']))
         if args.debug:
@@ -151,7 +157,7 @@ def main(argv):
         else:
           result = 'FAILED'
         args.log.write('{}\t{}\t{}\n'.encode('utf8').format(result, tab['title'], tab['url']))
-      time.sleep(SLEEP_TIME)
+      time.sleep(args.pause)
 
 
 def parse_window_spec(window_spec):
