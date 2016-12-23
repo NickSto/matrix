@@ -62,7 +62,7 @@ def main():
               break
       else:
         for account in entry.accounts.values():
-          for section in account.sections.values():
+          for section in account.values():
             for key, values in section.items():
               if args.keys:
                 if key in args.keys:
