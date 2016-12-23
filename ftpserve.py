@@ -49,11 +49,11 @@ def main(argv):
     perm_str += ' and write'
     permissions += 'adfmwM'
 
-  listen_ip = '127.0.0.1'
   listen_str = 'localhost'
+  listen_ip = '127.0.0.1'
   if args.any_ip:
-    listen_ip = '0.0.0.0'
     listen_str = 'any IP'
+    listen_ip = '0.0.0.0'
 
   authorizer = pyftpdlib.authorizers.DummyAuthorizer()
   if args.user and args.password:
