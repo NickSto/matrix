@@ -41,15 +41,17 @@ def main(argv):
   format_str = '{:0'+str(places)+'b}'
   # The number of possible dot combinations is 2**places.
   for i in range(2**places):
-    combination = ''
+    email = ''
+    # Get a string of 0's and 1's representing presence or absence of dots.
     pattern = format_str.format(i)
+    # Build an email string with dots where there are 0's in the pattern string.
     for char, bit in zip(args.email, pattern):
       if bit == '0':
-        combination += char
+        email += char
       elif bit == '1':
-        combination += char + '.'
-    combination += args.email[-1]
-    basenames[combination] = 0
+        email += char + '.'
+    email += args.email[-1]
+    basenames[email] = 0
 
   with open(args.accounts_path, 'rU') as accounts_file:
     for entry in accountslib.parse(accounts_file):
@@ -70,6 +72,8 @@ def main(argv):
   basename_list = reversed(sorted(basenames.keys(), key=lambda basename: basenames[basename]))
   for basename in basename_list:
     if args.choose:
+      # Track the email with the fewest uses, and if there are multiple with the fewest, find the
+      # one out of those with the fewest dots.
       uses = basenames[basename]
       dots = len(basename) - len(args.email)
       if uses < uses_min:
@@ -81,6 +85,7 @@ def main(argv):
           least_used = basename
           dots_min = dots
     else:
+      # If not --choose, just print every email.
       print_email(basename, basenames[basename], args.tabs)
   if args.choose:
     print_email(least_used, uses_min, args.tabs)
