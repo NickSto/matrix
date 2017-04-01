@@ -8,9 +8,6 @@ import argparse
 import subprocess
 import ConfigParser
 import distutils.spawn
-# Munge sys.path to prevent the "import email.mime.text" from trying to import this script.
-local_dir = sys.path.pop(0)
-sys.path.append(local_dir)
 import email.mime.text
 
 CONFIG_FILENAME = 'email.cfg'
