@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
@@ -54,7 +54,7 @@ def main(argv):
       url = tab['url']
       if args.format == 'human':
         if args.titles:
-          print('  '.encode('utf-8')+title)
+          print('  '+title)
         if args.urls:
           print('    '+url)
       elif args.format == 'tsv':
@@ -77,7 +77,7 @@ def main(argv):
 
 def file_to_json(path):
   line_num = 0
-  with open(path, 'rU') as session_file:
+  with open(path, 'rU', encoding='utf8') as session_file:
     for line in session_file:
       line_num += 1
       if line_num == 5:
@@ -87,7 +87,7 @@ def file_to_json(path):
 def get_tabs(window):
   for tab in window['tabs']:
     last_history_item = tab['entries'][-1]
-    title = last_history_item.get('title', '').encode('utf-8')
+    title = last_history_item.get('title', '')
     url = last_history_item.get('url')
     yield {'title':title, 'url':url}
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
@@ -6,15 +6,15 @@ from __future__ import unicode_literals
 import sys
 import time
 import errno
-import urllib
-import httplib
+import urllib.parse
+import http.client
 import argparse
 import xml.etree.ElementTree
 session_manager = __import__('session-manager')
 
 API_DOMAIN = 'api.pinboard.in'
-GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'.encode('utf8')
-ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'.encode('utf8')
+GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'
+ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'
 MAX_RESPONSE = 16384 # bytes
 ARG_DEFAULTS = {'pause':3.05}
 USAGE = "%(prog)s [options]"
@@ -115,18 +115,16 @@ def main(argv):
     if archiving and args.end and end:
       break
   if len(begin_matches) > 1:
-    fail('Error: --begin matches multiple tabs:\n'.encode('utf8')+
-         '\n'.encode('utf8').join(begin_matches))
+    fail('Error: --begin matches multiple tabs:\n'+'\n'.join(begin_matches))
   if len(end_matches) > 1:
-    fail('Error: --end matches multiple tabs:\n'.encode('utf8')+
-         '\n'.encode('utf8').join(end_matches))
+    fail('Error: --end matches multiple tabs:\n'+'\n'.join(end_matches))
 
   print('Found {} tabs to archive.\n'.format(len(tabs)))
 
   for tab in tabs:
     if not tab['title']:
       tab['title'] = '.'
-    print('\t'.encode('utf8')+tab['title'][:91])
+    print('\t'+tab['title'][:91])
     if tab['url'].startswith('about:'):
       print('about: tab. Skipping.')
       continue
@@ -156,7 +154,7 @@ def main(argv):
           result = 'bookmarked'
         else:
           result = 'FAILED'
-        args.log.write('{}\t{}\t{}\n'.encode('utf8').format(result, tab['title'], tab['url']))
+        args.log.write('{}\t{}\t{}\n'.format(result, tab['title'], tab['url']))
       time.sleep(args.pause)
 
 
@@ -183,11 +181,11 @@ def get_biggest_window(session):
 
 
 def quote(string):
-  return urllib.quote_plus(string)
+  return urllib.parse.quote_plus(string)
 
 
 def make_request(domain, path):
-  conex = httplib.HTTPSConnection(domain)
+  conex = http.client.HTTPSConnection(domain)
   #TODO: Both of these steps can throw exceptions. Deal with them.
   conex.request('GET', path)
   return conex.getresponse()
