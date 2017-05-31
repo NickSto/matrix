@@ -30,6 +30,9 @@ def main():
     help='Keys to select. Will only print the key: value line. If there are multiple values, it '
          'will print them on multiple lines, repeating the key name (perfect for sort | uniq). '
          'Give in comma-delimited format.')
+  parser.add_argument('-v', '--values', type=lambda values: values.split(','),
+    help='Values to select. Will only print the key: value line, just like with --keys. '
+         'Give in comma-delimited format.')
   parser.add_argument('-f', '--flag',
     help='Select values with this flag set. If --keys is given, select only the values for those '
          'keys. Otherwise, select all values with this flag, regardless of the key.')
@@ -68,7 +71,14 @@ def main():
                 if key in args.keys:
                   for value in values:
                     print_value = False
-                    if args.flag:
+                    if args.values:
+                      if value in args.values:
+                        if args.flag:
+                          if args.flag in value.flags:
+                            print_value = True
+                        else:
+                          print_value = True
+                    elif args.flag:
                       if args.flag in value.flags:
                         print_value = True
                     else:
