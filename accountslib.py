@@ -240,6 +240,33 @@ class Entry(object):
     elif key == 'app':
       self.app = [value.value for value in values]
     self._set_values(None, Entry.meta_section, key, values)
+  def matches(self, entry_name=None, fuzzy_query=None, keys=(), values=(), flags=()):
+    if entry_name is not None and entry_name != self.name:
+      return False
+    elif fuzzy_query is not None and not self.fuzzy_matches(fuzzy_query):
+      return False
+    elif keys or values or flags:
+      for account in self.accounts.values():
+        for section in account.values():
+          for key, value in section.items():
+            if keys and key in keys:
+              return True
+            elif (values or flags) and value.matches(values, flags):
+              return True
+      return False
+    else:
+      return True
+  def fuzzy_matches(self, query_raw):
+    query = query_raw.lower()
+    if query in self.name.lower():
+      return True
+    else:
+      for account in self.accounts.values():
+        for section in account.values():
+          for key in section.keys():
+            if query in key.lower():
+              return True
+    return False
   def __str__(self):
     output = self.name+':'
     if None in self.accounts:
@@ -251,6 +278,7 @@ class Entry(object):
         continue
       output += '\n'+str(account)
     return output
+
 
 class Account(collections.OrderedDict):
   def __init__(self, number, section=Entry.default_section):
@@ -270,6 +298,7 @@ class Account(collections.OrderedDict):
     return output
   def __repr__(self):
     return 'Account {} (sections {})'.format(self.number, ', '.join(self.keys()))
+
 
 class Section(collections.OrderedDict):
   def __init__(self, name):
@@ -293,10 +322,18 @@ class Section(collections.OrderedDict):
   def __repr__(self):
     return 'Section "'+self.name+'"'
 
+
 class Value(object):
   def __init__(self, value, flags=[]):
     self.value = value
     self.flags = set(flags)
+  def matches(self, values=(), flags=()):
+    if values and self not in values:
+      return False
+    elif flags and not _any_to_any_match(self.flags, flags):
+      return False
+    else:
+      return True
   def __str__(self):
     output = self.value
     for flag in self.flags:
@@ -316,3 +353,11 @@ class Value(object):
         return False
     else:
       return value == self.value
+
+
+def _any_to_any_match(targets, queries):
+  """Do any of the strings in "queries" match any of the strings in "targets"?"""
+  for query in queries:
+    if query in targets:
+      return True
+  return False
