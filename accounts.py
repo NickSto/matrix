@@ -6,7 +6,7 @@ import sys
 import argparse
 import accountslib
 
-OPT_DEFAULTS = {'output':None}
+OPT_DEFAULTS = {'output':None, 'case':'sensitive'}
 USAGE = "%(prog)s [options]"
 DESCRIPTION = """Parse the accounts.txt file and print the selected information."""
 EPILOG = """N.B.: The parser operates in strict-mode only. Any error will cause an exception (but
@@ -32,13 +32,16 @@ def main():
          'Default: "keys" when --keys, --values, or --flags is given, "entry" otherwise.')
   parser.add_argument('-t', '--tabs', action='store_true',
     help='Format output as tab-delimited, computer-readable lines. Flags are stripped from values.')
+  parser.add_argument('-c', '--contains', action='store_true',
+    help='Pass the filter if the value contains the filter string anywhere in it.')
+  parser.add_argument('-i', '--case-insensitive', dest='case', action='store_const',
+    const='insensitive',
+    help='When comparing a value to a filter, do a case-insensitive match.')
   filters = parser.add_argument_group(title='Filters', description='These arguments select which '
     'entry, keys, or values to print. A hit must match every filter given. For --keys, --values, '
     'and --flags, a hit can match any of the strings given.')
   filters.add_argument('-e', '--entry',
     help='The entry name.')
-  filters.add_argument('-z', '--fuzzy-match',
-    help='A string that must be present in the entry name or one of its keys (case-insensitive).')
   filters.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
     help='Key name(s). Comma-delimited list.')
   filters.add_argument('-v', '--values', type=lambda values: values.split(','),
@@ -62,18 +65,16 @@ def main():
 
   with open(accounts_path) as accounts_file:
     for entry in accountslib.parse(accounts_file):
-      if args.entry and args.entry != entry.name:
-        continue
-      elif args.fuzzy_match and not entry.fuzzy_matches(args.fuzzy_match):
+      if args.entry and not accountslib.matches(args.entry, entry.name, args.contains, args.case):
         continue
       matched_entry = False
       for account in entry.accounts.values():
         for section in account.values():
           for key, values in section.items():
-            if args.keys and key not in args.keys:
+            if args.keys and not accountslib.any_matches(key, args.keys, args.contains, args.case):
               continue
             for value in values:
-              if value.matches(args.values, args.flags):
+              if value.matches(args.values, args.flags, args.contains, args.case):
                 if output == 'entry':
                   print(str(entry)+'\n')
                   matched_entry = True

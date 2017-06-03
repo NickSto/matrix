@@ -327,10 +327,10 @@ class Value(object):
   def __init__(self, value, flags=[]):
     self.value = value
     self.flags = set(flags)
-  def matches(self, values=(), flags=()):
-    if values and self not in values:
+  def matches(self, values=(), flags=(), contains=False, case='sensitive'):
+    if values and not any_matches(self.value, values, contains, case):
       return False
-    elif flags and not _any_to_any_match(self.flags, flags):
+    elif flags and not any_to_any_match(self.flags, flags, contains, case):
       return False
     else:
       return True
@@ -355,9 +355,26 @@ class Value(object):
       return value == self.value
 
 
-def _any_to_any_match(targets, queries):
+def matches(query, target, contains=False, case='sensitive'):
+  if case == 'insensitive':
+    query = query.lower()
+    target = target.lower()
+  if contains:
+    return query in target
+  else:
+    return query == target
+
+
+def any_matches(target, queries, contains=False, case='sensitive'):
+  for query in queries:
+    if matches(query, target, contains, case):
+      return True
+  return False
+
+
+def any_to_any_match(targets, queries, contains=False, case='sensitive'):
   """Do any of the strings in "queries" match any of the strings in "targets"?"""
   for query in queries:
-    if query in targets:
+    if any_matches(query, targets, contains, case):
       return True
   return False
