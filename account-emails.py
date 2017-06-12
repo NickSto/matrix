@@ -6,9 +6,14 @@ from __future__ import unicode_literals
 import os
 import sys
 import argparse
-import accountslib
 import collections
+import accountslib
+try:
+  from lib import console
+except ImportError:
+  console = None
 
+DEFAULT_TERMWIDTH = 80
 ARG_DEFAULTS = {'email':'nmapsy', 'accounts_path':'~/annex/Info/reference, notes/accounts.txt'}
 USAGE = "%(prog)s [options]"
 DESCRIPTION = """Go through my accounts and find all the dot-variations of my spam email address
@@ -30,6 +35,12 @@ def main(argv):
     help='Print tab-delimited lines with no colons (computer-readable).')
 
   args = parser.parse_args(argv[1:])
+
+  if console is None:
+    termwidth = DEFAULT_TERMWIDTH
+  else:
+    termwidth = console.termwidth()
+  entries = collections.defaultdict(list)
 
   # Create all possible combinations of dots in the username.
   # (Only considers single dots between letters, not multiple.)
@@ -53,6 +64,7 @@ def main(argv):
     email += args.email[-1]
     basenames[email] = 0
 
+  # Read accounts.txt file.
   with open(args.accounts_path, 'rU') as accounts_file:
     for entry in accountslib.parse(accounts_file):
       for account in entry.accounts.values():
@@ -64,6 +76,7 @@ def main(argv):
                 basename = username.split('+')[0]
                 if basename.replace('.', '') == args.email:
                   basenames[basename] += 1
+                  entries[basename].append(entry.name)
 
   # Print all the used combinations.
   least_used = None
@@ -86,16 +99,17 @@ def main(argv):
           dots_min = dots
     else:
       # If not --choose, just print every email.
-      print_email(basename, basenames[basename], args.tabs)
+      print_email(basename, basenames[basename], entries[basename], args.tabs, termwidth)
   if args.choose:
-    print_email(least_used, uses_min, args.tabs)
+    print_email(least_used, uses_min, entries[least_used], args.tabs, termwidth)
 
 
-def print_email(email, uses, tabs=False):
+def print_email(email, uses, entries, tabs=False, width=80):
   if tabs:
-    print(email, uses, sep='\t')
+    print(email, uses, ','.join(entries), sep='\t')
   else:
-    print('{:16s}{}'.format(email+':', uses))
+    entries_str = ', '.join(entries)[:width-24]
+    print('{:16s}{}\t{}'.format(email+':', uses, entries_str))
 
 
 def fail(message):
