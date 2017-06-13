@@ -44,6 +44,8 @@ def main():
     'matches one of the positive filters).')
   filters.add_argument('-e', '--entry',
     help='The entry name.')
+  filters.add_argument('-s', '--section',
+    help='The [section name].')
   filters.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
     help='Key name(s). Comma-delimited list.')
   filters.add_argument('-v', '--values', type=lambda values: values.split(','),
@@ -51,6 +53,7 @@ def main():
   filters.add_argument('-f', '--flags', type=lambda values: values.split(','),
     help='Flags. Comma-delimited list.')
   filters.add_argument('-E', '--not-entry')
+  filters.add_argument('-S', '--not-section')
   filters.add_argument('-K', '--not-keys', type=lambda values: values.split(','))
   filters.add_argument('-V', '--not-values', type=lambda values: values.split(','))
   filters.add_argument('-F', '--not-flags', type=lambda values: values.split(','))
@@ -64,7 +67,8 @@ def main():
 
   if args.output is not None:
     output = args.output
-  elif args.keys or args.values or args.flags or args.not_keys or args.not_values or args.not_flags:
+  elif (args.section or args.keys or args.values or args.flags or args.not_section or args.not_keys
+        or args.not_values or args.not_flags):
     output = 'keys'
   else:
     output = 'entry'
@@ -78,6 +82,12 @@ def main():
       matched_entry = False
       for account in entry.accounts.values():
         for section in account.values():
+          if args.section and not accountslib.matches(args.section, section.name, args.contains,
+                                                      args.case):
+            continue
+          if args.not_section and accountslib.matches(args.not_section, section.name, args.contains,
+                                                      args.case):
+            continue
           for key, values in section.items():
             if args.keys and not accountslib.any_matches(key, args.keys, args.contains, args.case):
               continue
