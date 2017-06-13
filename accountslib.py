@@ -6,10 +6,12 @@ import collections
 FLAG_REGEX = r'\s\*\*([^*]+)\*\*'
 VALUE_REGEX = r'^\s*(\S.*?)\s+\*\*[^*]+\*\*'
 
+
 class FormatError(Exception):
   def __init__(self, message=None):
     if message:
       Exception.__init__(self, message)
+
 
 def parse(lines):
   """A generator to parse the accounts file, line by line.
@@ -240,33 +242,6 @@ class Entry(object):
     elif key == 'app':
       self.app = [value.value for value in values]
     self._set_values(None, Entry.meta_section, key, values)
-  def matches(self, entry_name=None, fuzzy_query=None, keys=(), values=(), flags=()):
-    if entry_name is not None and entry_name != self.name:
-      return False
-    elif fuzzy_query is not None and not self.fuzzy_matches(fuzzy_query):
-      return False
-    elif keys or values or flags:
-      for account in self.accounts.values():
-        for section in account.values():
-          for key, value in section.items():
-            if keys and key in keys:
-              return True
-            elif (values or flags) and value.matches(values, flags):
-              return True
-      return False
-    else:
-      return True
-  def fuzzy_matches(self, query_raw):
-    query = query_raw.lower()
-    if query in self.name.lower():
-      return True
-    else:
-      for account in self.accounts.values():
-        for section in account.values():
-          for key in section.keys():
-            if query in key.lower():
-              return True
-    return False
   def __str__(self):
     output = self.name+':'
     if None in self.accounts:
@@ -328,6 +303,16 @@ class Value(object):
     self.value = value
     self.flags = set(flags)
   def matches(self, values=(), flags=(), contains=False, case='sensitive'):
+    """Does the Value match the given value and flag string(s)?
+    "values" is a list of strings. If given, the Value.value must match one of them.
+    "flags" is a list of strings. If given, one of the Value.flags must match one of the strings.
+    If neither are given, this returns True.
+    By default, a match between strings simply means they're equal ("==").
+    If "contains" is True, then a match means the query string occurs as a substring inside the
+    target ("query in target"). Queries are the strings given as the "values" and "flags" arguments,
+    and targets are the Value.value and Value.flags strings.
+    If "case" is "insensitive", then both the query and target are lowercased before each
+    comparison."""
     if values and not any_matches(self.value, values, contains, case):
       return False
     elif flags and not any_to_any_match(self.flags, flags, contains, case):
@@ -356,6 +341,10 @@ class Value(object):
 
 
 def matches(query, target, contains=False, case='sensitive'):
+  """Does the query string match the target string?
+  By default, it simply returns query == target.
+  If contains is True, it returns query in target (does query occur as a substring inside target?).
+  If case is 'insensitive', both query and target are lowercased before the comparison."""
   if case == 'insensitive':
     query = query.lower()
     target = target.lower()
