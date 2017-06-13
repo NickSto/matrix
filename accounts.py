@@ -39,7 +39,9 @@ def main():
     help='When comparing a value to a filter, do a case-insensitive match.')
   filters = parser.add_argument_group(title='Filters', description='These arguments select which '
     'entry, keys, or values to print. A hit must match every filter given. For --keys, --values, '
-    'and --flags, a hit can match any of the strings given.')
+    'and --flags, a hit can match any of the strings given. The uppercase versions '
+    '(-E, -K, -V, -F) are negations, meaning a hit cannot match any of those filters (even if it '
+    'matches one of the positive filters).')
   filters.add_argument('-e', '--entry',
     help='The entry name.')
   filters.add_argument('-k', '--keys', type=lambda keys: keys.split(','),
@@ -48,6 +50,10 @@ def main():
     help='Values. Comma-delimited list.')
   filters.add_argument('-f', '--flags', type=lambda values: values.split(','),
     help='Flags. Comma-delimited list.')
+  filters.add_argument('-E', '--not-entry')
+  filters.add_argument('-K', '--not-keys', type=lambda values: values.split(','))
+  filters.add_argument('-V', '--not-values', type=lambda values: values.split(','))
+  filters.add_argument('-F', '--not-flags', type=lambda values: values.split(','))
 
   args = parser.parse_args()
 
@@ -58,7 +64,7 @@ def main():
 
   if args.output is not None:
     output = args.output
-  elif args.keys or args.values or args.flags:
+  elif args.keys or args.values or args.flags or args.not_keys or args.not_values or args.not_flags:
     output = 'keys'
   else:
     output = 'entry'
@@ -67,33 +73,42 @@ def main():
     for entry in accountslib.parse(accounts_file):
       if args.entry and not accountslib.matches(args.entry, entry.name, args.contains, args.case):
         continue
+      if args.not_entry and accountslib.matches(args.not_entry, entry.name, args.contains, args.case):
+        continue
       matched_entry = False
       for account in entry.accounts.values():
         for section in account.values():
           for key, values in section.items():
             if args.keys and not accountslib.any_matches(key, args.keys, args.contains, args.case):
               continue
+            if args.not_keys and accountslib.any_matches(key, args.not_keys, args.contains, args.case):
+              continue
             for value in values:
-              if value.matches(args.values, args.flags, args.contains, args.case):
-                if output == 'entry':
-                  print(str(entry)+'\n')
-                  matched_entry = True
-                  break
-                elif output == 'name':
-                  print(entry.name)
-                  matched_entry = True
-                  break
-                elif output == 'keys':
-                  if args.tabs:
-                    print(key, *[value.value for value in values], sep='\t')
-                  else:
-                    print('\t' + key + ':\t' + '; '.join(map(str, values)))
-                  break
-                elif output == 'values':
-                  if args.tabs:
-                    print(key, value.value, sep='\t')
-                  else:
-                    print('\t{}:\t{}'.format(key, value))
+              if ((args.values or args.flags) and
+                  not value.matches(args.values, args.flags, args.contains, args.case)):
+                continue
+              if ((args.not_flags or args.not_values) and
+                  value.matches(args.not_values, args.not_flags, args.contains, args.case)):
+                continue
+              if output == 'entry':
+                print(str(entry)+'\n')
+                matched_entry = True
+                break
+              elif output == 'name':
+                print(entry.name)
+                matched_entry = True
+                break
+              elif output == 'keys':
+                if args.tabs:
+                  print(key, *[value.value for value in values], sep='\t')
+                else:
+                  print('\t' + key + ':\t' + '; '.join(map(str, values)))
+                break
+              elif output == 'values':
+                if args.tabs:
+                  print(key, value.value, sep='\t')
+                else:
+                  print('\t{}:\t{}'.format(key, value))
             if matched_entry:
               break
           if matched_entry:
