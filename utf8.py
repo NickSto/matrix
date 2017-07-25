@@ -25,7 +25,8 @@ def make_argparser():
          'Unicode characters. For "hex", you can include characters outside [0-9A-F]. They will '
          'be removed. If you are giving "chars" in hex (code points), separate them with spaces or '
          'commas.')
-  parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'str', 'desc'), default='desc')
+  parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'bin', 'str', 'desc'),
+    default='desc')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -116,6 +117,8 @@ def code_points_to_output(code_points, output_type, output_format):
           output_strs.append(code_point_hex)
         elif output_format == 'int':
           output_strs.append(str(code_point))
+        elif output_format == 'bin':
+          output_strs.append(pad_binary(bin(code_point)[2:]))
       yield ' '.join(output_strs)
   elif output_type == 'bytes':
     for code_point in code_points:
@@ -129,6 +132,9 @@ def code_points_to_output(code_points, output_type, output_format):
           output_strs.append(byte_hex)
         elif output_format == 'int':
           output_strs.append(str(byte))
+        elif output_format == 'bin':
+          byte_bin = pad_binary(bin(byte)[2:])
+          output_strs.append(byte_bin)
       yield ' '.join(output_strs)
 
 
@@ -294,6 +300,10 @@ UNICODE_CHAR_HEX = ['49', 'F1', '74', 'EB', '72', '6E', 'E2', '74', '69', 'F4', 
 UNICODE_CHAR_PADDED_HEX = ['0049', '00F1', '0074', '00EB', '0072', '006E', '00E2', '0074', '0069',
                            '00F4', '006E', '00E0', '006C', '0069', '007A', '00E6', '0074', '0069',
                            '00F8', '006E', '2603', '01F4A9']
+UNICODE_CHAR_BIN = ['01001001', '11110001', '01110100', '11101011', '01110010', '01101110',
+                    '11100010', '01110100', '01101001', '11110100', '01101110', '11100000',
+                    '01101100', '01101001', '01111010', '11100110', '01110100', '01101001',
+                    '11111000', '01101110', '0010011000000011', '000000011111010010101001']
 UNICODE_CHAR_DESC = [
   'U+0049:   I (LATIN CAPITAL LETTER I)',
   'U+00F1:   ñ (LATIN SMALL LETTER N WITH TILDE)',
@@ -366,6 +376,30 @@ UTF8_INTS = [
   ['226', '152', '131'],
   ['240', '159', '146', '169']
  ]
+UTF8_BIN = [
+  ['01001001'],
+  ['11000011', '10110001'],
+  ['01110100'],
+  ['11000011', '10101011'],
+  ['01110010'],
+  ['01101110'],
+  ['11000011', '10100010'],
+  ['01110100'],
+  ['01101001'],
+  ['11000011', '10110100'],
+  ['01101110'],
+  ['11000011', '10100000'],
+  ['01101100'],
+  ['01101001'],
+  ['01111010'],
+  ['11000011', '10100110'],
+  ['01110100'],
+  ['01101001'],
+  ['11000011', '10111000'],
+  ['01101110'],
+  ['11100010', '10011000', '10000011'],
+  ['11110000', '10011111', '10010010', '10101001'],
+]
 
 
 def join_list_of_lists(lol):
@@ -411,9 +445,11 @@ class UnicodeOutputTest(unittest.TestCase):
     {'type':'chars', 'format':'str', 'output':[UNICODE_STR]},
     {'type':'chars', 'format':'hex', 'output':[' '.join(UNICODE_CHAR_PADDED_HEX)]},
     {'type':'chars', 'format':'int', 'output':[' '.join(UNICODE_CHAR_INTS)]},
+    {'type':'chars', 'format':'bin', 'output':[' '.join(UNICODE_CHAR_BIN)]},
     {'type':'chars', 'format':'desc', 'output':UNICODE_CHAR_DESC},
     {'type':'bytes', 'format':'hex', 'output':[' '.join(bytes) for bytes in UTF8_HEX]},
     {'type':'bytes', 'format':'int', 'output':[' '.join(bytes) for bytes in UTF8_INTS]},
+    {'type':'bytes', 'format':'bin', 'output':[' '.join(bytes) for bytes in UTF8_BIN]},
   )
 
 for data in UnicodeOutputTest.test_data:
