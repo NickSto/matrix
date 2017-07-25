@@ -51,17 +51,19 @@ def main(argv):
   else:
     output_format = args.output_format
 
-  code_points = input_to_code_points(args.inputs, args.input_type, input_format)
+  input_strs = get_input(args.inputs, input_format)
+
+  code_points = input_to_code_points(input_strs, args.input_type, input_format)
 
   for line in code_points_to_output(code_points, args.output_type, output_format):
     print(line)
 
 
-def input_to_code_points(input_args, input_type, input_format):
+def input_to_code_points(input_strs, input_type, input_format):
   """Parse input into code points."""
   if input_type == 'bytes':
     bin_input = ''
-    for input_str in get_input(input_args, input_format):
+    for input_str in input_strs:
       if input_format == 'hex':
         hex_input = clean_up_hex(input_str)
         bin_input += hex_to_binary(hex_input)
@@ -73,10 +75,10 @@ def input_to_code_points(input_args, input_type, input_format):
       yield char_bytes_to_code_point(char_bytes)
   elif input_type == 'chars':
     if input_format == 'str':
-      for char in get_input(input_args, input_format):
+      for char in input_strs:
         yield ord(char)
     else:
-      for input_str in get_input(input_args, input_format):
+      for input_str in input_strs:
         if input_format == 'hex':
           hex_input = clean_up_hex(input_str)
           yield int(hex_input, 16)
