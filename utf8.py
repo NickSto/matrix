@@ -4,6 +4,7 @@ import sys
 import errno
 import logging
 import argparse
+import unittest
 import unicodedata
 assert sys.version_info.major >= 3, 'Python 3 required'
 
@@ -13,7 +14,8 @@ DESCRIPTION = """Convert UTF-8 encoded bytes into Unicode characters, or vice ve
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
   parser.add_argument('inputs', nargs='*',
-    help='Your characters or bytes.')
+    help='Your characters or bytes. Omit to read from stdin. Warning: It will read the entire '
+         'input into memory.')
   parser.add_argument('-i', '--input-type', choices=('bytes', 'chars',), default='bytes',
     help='Whether the input is UTF-8 encoded bytes, or Unicode characters.')
   parser.add_argument('-o', '--output-type', choices=('bytes', 'chars'), default='chars',
@@ -30,6 +32,8 @@ def make_argparser():
     default=logging.WARN)
   parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
   parser.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
+  parser.add_argument('-t', '--test', action='store_true',
+    help='Run tests.')
   return parser
 
 
@@ -40,6 +44,11 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
+
+  if args.test:
+    sys.argv = sys.argv[:1]
+    unittest.main()
+    return
 
   # Process format arguments.
   input_format = args.input_format
@@ -266,6 +275,145 @@ def fail(message):
     sys.exit(1)
   else:
     raise Exception('Unrecoverable error')
+
+
+####################   TESTS   ####################
+
+UNICODE_STR = 'Iñtërnâtiônàlizætiøn☃💩'
+UNICODE_CODE_POINTS = [73, 241, 116, 235, 114, 110, 226, 116, 105, 244, 110, 224, 108, 105, 122,
+                       230, 116, 105, 248, 110, 9731, 128169]
+UNICODE_CHAR_INTS = ['73', '241', '116', '235', '114', '110', '226', '116', '105', '244', '110',
+                     '224', '108', '105', '122', '230', '116', '105', '248', '110', '9731', '128169']
+UNICODE_CHAR_HEX = ['49', 'F1', '74', 'EB', '72', '6E', 'E2', '74', '69', 'F4', '6E', 'E0', '6C',
+                    '69', '7A', 'E6', '74', '69', 'F8', '6E', '2603', '1F4A9']
+UNICODE_CHAR_PADDED_HEX = ['0049', '00F1', '0074', '00EB', '0072', '006E', '00E2', '0074', '0069',
+                           '00F4', '006E', '00E0', '006C', '0069', '007A', '00E6', '0074', '0069',
+                           '00F8', '006E', '2603', '01F4A9']
+UNICODE_CHAR_DESC = [
+  'U+0049:   I (LATIN CAPITAL LETTER I)',
+  'U+00F1:   ñ (LATIN SMALL LETTER N WITH TILDE)',
+  'U+0074:   t (LATIN SMALL LETTER T)',
+  'U+00EB:   ë (LATIN SMALL LETTER E WITH DIAERESIS)',
+  'U+0072:   r (LATIN SMALL LETTER R)',
+  'U+006E:   n (LATIN SMALL LETTER N)',
+  'U+00E2:   â (LATIN SMALL LETTER A WITH CIRCUMFLEX)',
+  'U+0074:   t (LATIN SMALL LETTER T)',
+  'U+0069:   i (LATIN SMALL LETTER I)',
+  'U+00F4:   ô (LATIN SMALL LETTER O WITH CIRCUMFLEX)',
+  'U+006E:   n (LATIN SMALL LETTER N)',
+  'U+00E0:   à (LATIN SMALL LETTER A WITH GRAVE)',
+  'U+006C:   l (LATIN SMALL LETTER L)',
+  'U+0069:   i (LATIN SMALL LETTER I)',
+  'U+007A:   z (LATIN SMALL LETTER Z)',
+  'U+00E6:   æ (LATIN SMALL LETTER AE)',
+  'U+0074:   t (LATIN SMALL LETTER T)',
+  'U+0069:   i (LATIN SMALL LETTER I)',
+  'U+00F8:   ø (LATIN SMALL LETTER O WITH STROKE)',
+  'U+006E:   n (LATIN SMALL LETTER N)',
+  'U+2603:   ☃ (SNOWMAN)',
+  'U+01F4A9: 💩 (PILE OF POO)'
+]
+UTF8_HEX = [
+  ['49'],
+  ['C3', 'B1'],
+  ['74'],
+  ['C3', 'AB'],
+  ['72'],
+  ['6E'],
+  ['C3', 'A2'],
+  ['74'],
+  ['69'],
+  ['C3', 'B4'],
+  ['6E'],
+  ['C3', 'A0'],
+  ['6C'],
+  ['69'],
+  ['7A'],
+  ['C3', 'A6'],
+  ['74'],
+  ['69'],
+  ['C3', 'B8'],
+  ['6E'],
+  ['E2', '98', '83'],
+  ['F0', '9F', '92', 'A9']
+]
+UTF8_INTS = [
+  ['73'],
+  ['195', '177'],
+  ['116'],
+  ['195', '171'],
+  ['114'],
+  ['110'],
+  ['195', '162'],
+  ['116'],
+  ['105'],
+  ['195', '180'],
+  ['110'],
+  ['195', '160'],
+  ['108'],
+  ['105'],
+  ['122'],
+  ['195', '166'],
+  ['116'],
+  ['105'],
+  ['195', '184'],
+  ['110'],
+  ['226', '152', '131'],
+  ['240', '159', '146', '169']
+ ]
+
+
+def join_list_of_lists(lol):
+  out = []
+  for l in lol:
+    out.extend(l)
+  return out
+
+
+class UnicodeInputTest(unittest.TestCase):
+
+  @classmethod
+  def make_test(cls, type, format, input):
+    def test(self):
+      code_points = list(input_to_code_points(input, type, format))
+      self.assertEqual(code_points, UNICODE_CODE_POINTS)
+    return test
+
+  test_data = (
+    {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_PADDED_HEX},
+    {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_HEX},
+    {'type':'chars', 'format':'int', 'input':UNICODE_CHAR_INTS},
+    {'type':'chars', 'format':'str', 'input':UNICODE_STR},
+    {'type':'bytes', 'format':'hex', 'input':join_list_of_lists(UTF8_HEX)},
+    {'type':'bytes', 'format':'int', 'input':join_list_of_lists(UTF8_INTS)},
+  )
+
+for data in UnicodeInputTest.test_data:
+  test_function = UnicodeInputTest.make_test(data['type'], data['format'], data['input'])
+  setattr(UnicodeInputTest, 'test_parse_{type}_{format}'.format(**data), test_function)
+
+
+class UnicodeOutputTest(unittest.TestCase):
+
+  @classmethod
+  def make_test(cls, type, format, expected_output):
+    def test(self):
+      output_lines = list(code_points_to_output(UNICODE_CODE_POINTS, type, format))
+      self.assertEqual(output_lines, expected_output)
+    return test
+
+  test_data = (
+    {'type':'chars', 'format':'str', 'output':[UNICODE_STR]},
+    {'type':'chars', 'format':'hex', 'output':[' '.join(UNICODE_CHAR_PADDED_HEX)]},
+    {'type':'chars', 'format':'int', 'output':[' '.join(UNICODE_CHAR_INTS)]},
+    {'type':'chars', 'format':'desc', 'output':UNICODE_CHAR_DESC},
+    {'type':'bytes', 'format':'hex', 'output':[' '.join(bytes) for bytes in UTF8_HEX]},
+    {'type':'bytes', 'format':'int', 'output':[' '.join(bytes) for bytes in UTF8_INTS]},
+  )
+
+for data in UnicodeOutputTest.test_data:
+  test_function = UnicodeOutputTest.make_test(data['type'], data['format'], data['output'])
+  setattr(UnicodeOutputTest, 'test_format_{type}_{format}'.format(**data), test_function)
 
 
 if __name__ == '__main__':
