@@ -245,7 +245,12 @@ def format_code_point_output(code_point_int):
   code_point_hex = pad_hex(code_point_hex)
   character = chr(code_point_int)
   hex_col = 'U+{}:'.format(code_point_hex)
-  return '{:9s} {} ({})'.format(hex_col, character, unicodedata.name(character))
+  try:
+    character_name = unicodedata.name(character)
+  except ValueError:
+    logging.warn('No name for character {}.'.format(code_point_hex))
+    character_name = 'N/A'
+  return '{:9s} {} ({})'.format(hex_col, character, character_name)
 
 
 def pad_hex(hex_input, pad_to=None):
