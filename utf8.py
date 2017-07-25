@@ -69,7 +69,7 @@ def input_to_code_points(input_strs, input_type, input_format):
         bin_input += hex_to_binary(hex_input)
       elif input_format == 'int':
         integer = int(input_str)
-        bin_input += bin(integer)[2:]
+        bin_input += pad_binary(bin(integer)[2:])
     input_bytes = binary_to_bytes(bin_input)
     for char_bytes in chunk_byte_sequence(input_bytes):
       yield char_bytes_to_code_point(char_bytes)
@@ -178,7 +178,7 @@ def chunk_byte_sequence(input_bytes):
     if byte.startswith('0'):
       if bytes_togo > 0:
         logging.warn('Invalid byte sequence (not enough continuation bytes): "{}"'
-                     .format(' '.join(bytes_togo)))
+                     .format(' '.join(char_bytes)))
       yield char_bytes
       char_bytes = []
     elif byte.startswith('11'):
