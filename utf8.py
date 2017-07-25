@@ -125,7 +125,7 @@ def code_points_to_output(code_points, output_type, output_format):
       output_strs = []
       for byte in char_bytes:
         if output_format == 'hex':
-          byte_hex = hex(byte)[2:].upper()
+          byte_hex = pad_hex(hex(byte)[2:].upper(), pad_to=2)
           output_strs.append(byte_hex)
         elif output_format == 'int':
           output_strs.append(str(byte))
