@@ -18,12 +18,12 @@ def make_argparser():
     help='Whether the input is UTF-8 encoded bytes, or Unicode characters.')
   parser.add_argument('-o', '--output-type', choices=('bytes', 'chars'), default='chars',
     help='What to convert your input into.')
-  parser.add_argument('-f', '--input-format', choices=('hex', 'str'), default='hex',
+  parser.add_argument('-I', '--input-format', choices=('hex', 'int', 'str'), default='hex',
     help='The format of the input. "str" means to interpret the input argument as the literal '
          'Unicode characters. For "hex", you can include characters outside [0-9A-F]. They will '
          'be removed. If you are giving "chars" in hex (code points), separate them with spaces or '
          'commas.')
-  parser.add_argument('-F', '--output-format', choices=('hex', 'desc'), default='desc')
+  parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'desc'), default='desc')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -51,33 +51,49 @@ def main(argv):
     if input_format == 'hex':
       hex_input = clean_up_hex(args.input)
       bin_input = hex_to_binary(hex_input)
-      input_bytes = binary_to_bytes(bin_input)
-      code_points = []
-      for char_bytes in chunk_byte_sequence(input_bytes):
-        code_points.append(char_bytes_to_code_point(char_bytes))
+    elif input_format == 'int':
+      if ',' in args.input:
+        int_strs = args.input.split(',')
+      else:
+        int_strs = args.input.split()
+      bin_input = ''
+      for int_str in int_strs:
+        integer = int(int_str)
+        bin_input += bin(integer)[2:]
+    input_bytes = binary_to_bytes(bin_input)
+    code_points = []
+    for char_bytes in chunk_byte_sequence(input_bytes):
+      code_points.append(char_bytes_to_code_point(char_bytes))
   elif args.input_type == 'chars':
     code_points = []
-    if input_format == 'hex':
-      if ',' in args.input:
-        hex_inputs = args.input.split(',')
-      else:
-        hex_inputs = args.input.split()
-      for hex_input in hex_inputs:
-        hex_input = clean_up_hex(hex_input)
-        code_points.append(int(hex_input, 16))
-    elif input_format == 'str':
+    if input_format == 'str':
       for char in args.input:
         code_points.append(ord(char))
+    else:
+      if ',' in args.input:
+        input_strs = args.input.split(',')
+      else:
+        input_strs = args.input.split()
+      if input_format == 'hex':
+        for hex_input in input_strs:
+          hex_input = clean_up_hex(hex_input)
+          code_points.append(int(hex_input, 16))
+      elif input_format == 'int':
+        for int_input in input_strs:
+          code_points.append(int(int_input))
 
   if args.output_type == 'chars':
     if output_format == 'desc':
       for code_point in code_points:
         print(format_code_point_output(code_point))
-    elif output_format == 'hex':
+    else:
       for code_point in code_points:
-        code_point_hex = hex(code_point)[2:].upper()
-        code_point_hex = pad_hex(code_point_hex)
-        sys.stdout.write(code_point_hex+' ')
+        if output_format == 'hex':
+          code_point_hex = hex(code_point)[2:].upper()
+          code_point_hex = pad_hex(code_point_hex)
+          sys.stdout.write(code_point_hex+' ')
+        elif output_format == 'int':
+          sys.stdout.write('{} '.format(code_point))
       print()
   elif args.output_type == 'bytes':
     for code_point in code_points:
@@ -88,6 +104,8 @@ def main(argv):
         if output_format == 'hex':
           byte_hex = hex(byte)[2:].upper()
           sys.stdout.write(byte_hex+' ')
+        elif output_format == 'int':
+          sys.stdout.write('{} '.format(byte))
       print()
 
 
