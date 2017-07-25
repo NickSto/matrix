@@ -12,7 +12,7 @@ DESCRIPTION = """Convert UTF-8 encoded bytes into Unicode characters, or vice ve
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('input',
+  parser.add_argument('inputs', nargs='*',
     help='Your characters or bytes.')
   parser.add_argument('-i', '--input-type', choices=('bytes', 'chars',), default='bytes',
     help='Whether the input is UTF-8 encoded bytes, or Unicode characters.')
@@ -23,7 +23,7 @@ def make_argparser():
          'Unicode characters. For "hex", you can include characters outside [0-9A-F]. They will '
          'be removed. If you are giving "chars" in hex (code points), separate them with spaces or '
          'commas.')
-  parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'desc'), default='desc')
+  parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'str', 'desc'), default='desc')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -41,72 +41,105 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
+  # Process format arguments.
   input_format = args.input_format
   if args.output_type == 'bytes' and args.output_format == 'desc':
+    # The default output for bytes should be hex.
     output_format = 'hex'
+  elif args.output_type == 'bytes' and args.output_format == 'str':
+    fail('"str" is an invalid output format for type "bytes".')
   else:
     output_format = args.output_format
 
-  if args.input_type == 'bytes':
-    if input_format == 'hex':
-      hex_input = clean_up_hex(args.input)
-      bin_input = hex_to_binary(hex_input)
-    elif input_format == 'int':
-      if ',' in args.input:
-        int_strs = args.input.split(',')
-      else:
-        int_strs = args.input.split()
-      bin_input = ''
-      for int_str in int_strs:
-        integer = int(int_str)
+  code_points = input_to_code_points(args.inputs, args.input_type, input_format)
+
+  for line in code_points_to_output(code_points, args.output_type, output_format):
+    print(line)
+
+
+def input_to_code_points(input_args, input_type, input_format):
+  """Parse input into code points."""
+  if input_type == 'bytes':
+    bin_input = ''
+    for input_str in get_input(input_args, input_format):
+      if input_format == 'hex':
+        hex_input = clean_up_hex(input_str)
+        bin_input += hex_to_binary(hex_input)
+      elif input_format == 'int':
+        integer = int(input_str)
         bin_input += bin(integer)[2:]
     input_bytes = binary_to_bytes(bin_input)
-    code_points = []
     for char_bytes in chunk_byte_sequence(input_bytes):
-      code_points.append(char_bytes_to_code_point(char_bytes))
-  elif args.input_type == 'chars':
-    code_points = []
+      yield char_bytes_to_code_point(char_bytes)
+  elif input_type == 'chars':
     if input_format == 'str':
-      for char in args.input:
-        code_points.append(ord(char))
+      for char in get_input(input_args, input_format):
+        yield ord(char)
     else:
-      if ',' in args.input:
-        input_strs = args.input.split(',')
-      else:
-        input_strs = args.input.split()
-      if input_format == 'hex':
-        for hex_input in input_strs:
-          hex_input = clean_up_hex(hex_input)
-          code_points.append(int(hex_input, 16))
-      elif input_format == 'int':
-        for int_input in input_strs:
-          code_points.append(int(int_input))
+      for input_str in get_input(input_args, input_format):
+        if input_format == 'hex':
+          hex_input = clean_up_hex(input_str)
+          yield int(hex_input, 16)
+        elif input_format == 'int':
+          yield int(input_str)
 
-  if args.output_type == 'chars':
+
+def code_points_to_output(code_points, output_type, output_format):
+  """Format code points into the output format.
+  Yields a series of lines ready to be printed."""
+  if output_type == 'chars':
     if output_format == 'desc':
       for code_point in code_points:
-        print(format_code_point_output(code_point))
+        yield format_code_point_output(code_point)
+    elif output_format == 'str':
+      output_str = ''
+      for code_point in code_points:
+        output_str += chr(code_point)
+      yield output_str
     else:
+      output_strs = []
       for code_point in code_points:
         if output_format == 'hex':
           code_point_hex = hex(code_point)[2:].upper()
           code_point_hex = pad_hex(code_point_hex)
-          sys.stdout.write(code_point_hex+' ')
+          output_strs.append(code_point_hex)
         elif output_format == 'int':
-          sys.stdout.write('{} '.format(code_point))
-      print()
-  elif args.output_type == 'bytes':
+          output_strs.append(str(code_point))
+      yield ' '.join(output_strs)
+  elif output_type == 'bytes':
     for code_point in code_points:
       #TODO: Do this encoding manually.
       char = chr(code_point)
       char_bytes = bytes(char, 'utf8')
+      output_strs = []
       for byte in char_bytes:
         if output_format == 'hex':
           byte_hex = hex(byte)[2:].upper()
-          sys.stdout.write(byte_hex+' ')
+          output_strs.append(byte_hex)
         elif output_format == 'int':
-          sys.stdout.write('{} '.format(byte))
-      print()
+          output_strs.append(str(byte))
+      yield ' '.join(output_strs)
+
+
+def get_input(input_args, format):
+  if input_args:
+    input_chunks = input_args
+  else:
+    input_chunks = sys.stdin
+  for input_chunk in input_chunks:
+    if format == 'str':
+      for char in input_chunk:
+        yield char
+    else:
+      for input_str in comma_or_space_split(input_chunk):
+        yield input_str
+
+
+def comma_or_space_split(in_str):
+  if ',' in in_str:
+    return in_str.split(',')
+  else:
+    return in_str.split()
 
 
 def clean_up_hex(hex_input):
