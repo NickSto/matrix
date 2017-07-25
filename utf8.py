@@ -80,6 +80,8 @@ def input_to_code_points(input_strs, input_type, input_format):
       elif input_format == 'int':
         integer = int(input_str)
         bin_input += pad_binary(bin(integer)[2:])
+      elif input_format == 'bin':
+        bin_input += pad_binary(input_str)
     input_bytes = binary_to_bytes(bin_input)
     for char_bytes in chunk_byte_sequence(input_bytes):
       yield char_bytes_to_code_point(char_bytes)
@@ -94,6 +96,8 @@ def input_to_code_points(input_strs, input_type, input_format):
           yield int(hex_input, 16)
         elif input_format == 'int':
           yield int(input_str)
+        elif input_format == 'bin':
+          yield int(input_str, 2)
 
 
 def code_points_to_output(code_points, output_type, output_format):
@@ -422,9 +426,11 @@ class UnicodeInputTest(unittest.TestCase):
     {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_PADDED_HEX},
     {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_HEX},
     {'type':'chars', 'format':'int', 'input':UNICODE_CHAR_INTS},
+    {'type':'chars', 'format':'bin', 'input':UNICODE_CHAR_BIN},
     {'type':'chars', 'format':'str', 'input':UNICODE_STR},
     {'type':'bytes', 'format':'hex', 'input':join_list_of_lists(UTF8_HEX)},
     {'type':'bytes', 'format':'int', 'input':join_list_of_lists(UTF8_INTS)},
+    {'type':'bytes', 'format':'bin', 'input':join_list_of_lists(UTF8_BIN)},
   )
 
 for data in UnicodeInputTest.test_data:
