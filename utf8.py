@@ -190,6 +190,10 @@ def binary_to_bytes(binary):
 
 
 def chunk_byte_sequence(input_bytes):
+  """Take a list of bytes and split them into a separate list of bytes for each code point.
+  The input should be a list of bytes in binary, string form (like '10010111').
+  Question: Re-implementing UTF-8 parsing?
+  Answer: Yep! For fun, and to better understand it."""
   bytes_togo = 0
   char_bytes = []
   for byte in input_bytes:
@@ -406,47 +410,59 @@ UTF8_BIN = [
 ]
 
 
-def join_list_of_lists(lol):
-  out = []
-  for l in lol:
-    out.extend(l)
-  return out
-
-
-class UnicodeInputTest(unittest.TestCase):
+class UnicodeTest(unittest.TestCase):
 
   @classmethod
-  def make_test(cls, type, format, input):
+  def join_list_of_lists(cls, lol):
+    """"Flatten" a list of lists into a single list.
+    E.g. join_list_of_lists([[1, 2], [3, 4, 5]]) -> [1, 2, 3, 4, 5]."""
+    out = []
+    for l in lol:
+      out.extend(l)
+    return out
+
+  @classmethod
+  def make_tests(cls):
+    for data in cls.test_data:
+      test_function = cls.make_test(**data)
+      test_name = 'test_{}_{type}_{format}'.format(cls.test_name_prefix, **data)
+      setattr(cls, test_name, test_function)
+
+
+class UnicodeInputTest(UnicodeTest):
+
+  @classmethod
+  def make_test(cls, type=None, format=None, input=None):
     def test(self):
       code_points = list(input_to_code_points(input, type, format))
       self.assertEqual(code_points, UNICODE_CODE_POINTS)
     return test
 
+  test_name_prefix = 'parse'
   test_data = (
     {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_PADDED_HEX},
     {'type':'chars', 'format':'hex', 'input':UNICODE_CHAR_HEX},
     {'type':'chars', 'format':'int', 'input':UNICODE_CHAR_INTS},
     {'type':'chars', 'format':'bin', 'input':UNICODE_CHAR_BIN},
     {'type':'chars', 'format':'str', 'input':UNICODE_STR},
-    {'type':'bytes', 'format':'hex', 'input':join_list_of_lists(UTF8_HEX)},
-    {'type':'bytes', 'format':'int', 'input':join_list_of_lists(UTF8_INTS)},
-    {'type':'bytes', 'format':'bin', 'input':join_list_of_lists(UTF8_BIN)},
+    {'type':'bytes', 'format':'hex', 'input':UnicodeTest.join_list_of_lists(UTF8_HEX)},
+    {'type':'bytes', 'format':'int', 'input':UnicodeTest.join_list_of_lists(UTF8_INTS)},
+    {'type':'bytes', 'format':'bin', 'input':UnicodeTest.join_list_of_lists(UTF8_BIN)},
   )
 
-for data in UnicodeInputTest.test_data:
-  test_function = UnicodeInputTest.make_test(data['type'], data['format'], data['input'])
-  setattr(UnicodeInputTest, 'test_parse_{type}_{format}'.format(**data), test_function)
+UnicodeInputTest.make_tests()
 
 
-class UnicodeOutputTest(unittest.TestCase):
+class UnicodeOutputTest(UnicodeTest):
 
   @classmethod
-  def make_test(cls, type, format, expected_output):
+  def make_test(cls, type=None, format=None, output=None):
     def test(self):
       output_lines = list(code_points_to_output(UNICODE_CODE_POINTS, type, format))
-      self.assertEqual(output_lines, expected_output)
+      self.assertEqual(output_lines, output)
     return test
 
+  test_name_prefix = 'format'
   test_data = (
     {'type':'chars', 'format':'str', 'output':[UNICODE_STR]},
     {'type':'chars', 'format':'hex', 'output':[' '.join(UNICODE_CHAR_PADDED_HEX)]},
@@ -458,9 +474,7 @@ class UnicodeOutputTest(unittest.TestCase):
     {'type':'bytes', 'format':'bin', 'output':[' '.join(bytes) for bytes in UTF8_BIN]},
   )
 
-for data in UnicodeOutputTest.test_data:
-  test_function = UnicodeOutputTest.make_test(data['type'], data['format'], data['output'])
-  setattr(UnicodeOutputTest, 'test_format_{type}_{format}'.format(**data), test_function)
+UnicodeOutputTest.make_tests()
 
 
 if __name__ == '__main__':
