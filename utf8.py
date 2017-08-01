@@ -28,6 +28,9 @@ def make_argparser():
          'commas.')
   parser.add_argument('-O', '--output-format', choices=('hex', 'int', 'bin', 'str', 'desc'),
     default='desc')
+  parser.add_argument('--parse-method', choices=('str', 'bit'), default='bit',
+    help='The method to use for decoding UTF-8 bytes: string operations on a string representation '
+         'of each byte, or bitwise operations on an integer representation of each byte.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -64,13 +67,13 @@ def main(argv):
 
   input_strs = get_input(args.inputs, input_format)
 
-  code_points = input_to_code_points(input_strs, args.input_type, input_format)
+  code_points = input_to_code_points(input_strs, args.input_type, input_format, method=args.parse_method)
 
   for line in code_points_to_output(code_points, args.output_type, output_format):
     print(line)
 
 
-def input_to_code_points(input_strs, input_type, input_format):
+def input_to_code_points(input_strs, input_type, input_format, method='bit'):
   """Parse input into code points."""
   if input_type == 'bytes':
     bin_input = ''
@@ -84,8 +87,8 @@ def input_to_code_points(input_strs, input_type, input_format):
       elif input_format == 'bin':
         bin_input += pad_binary(input_str)
     input_bytes = binary_to_bytes(bin_input)
-    for char_bytes in chunk_byte_sequence(input_bytes):
-      yield char_bytes_to_code_point(char_bytes)
+    for char_bytes in chunk_byte_sequence(input_bytes, method=method):
+      yield char_bytes_to_code_point(char_bytes, method=method)
   elif input_type == 'chars':
     if input_format == 'str':
       for char in input_strs:
@@ -190,7 +193,14 @@ def binary_to_bytes(binary):
     yield binary[start:stop]
 
 
-def chunk_byte_sequence(input_bytes):
+def chunk_byte_sequence(input_bytes, method='bitwise'):
+  if method.startswith('str'):
+    return chunk_byte_sequence_str(input_bytes)
+  if method.startswith('bit'):
+    return chunk_byte_sequence_bit([int(byte, 2) for byte in input_bytes])
+
+
+def chunk_byte_sequence_str(input_bytes):
   """Take a list of bytes and split them into a separate list of bytes for each code point.
   The input should be a list of bytes in binary, string form (like '10010111').
   Question: Re-implementing UTF-8 parsing?
@@ -232,7 +242,67 @@ def chunk_byte_sequence(input_bytes):
                  .format(' '.join(char_bytes)))
 
 
-def char_bytes_to_code_point(char_bytes):
+def chunk_byte_sequence_bit(input_bytes):
+  """Take a list of bytes and split them into a separate list of bytes for each code point.
+  The input should be a list of byte values as integers."""
+  bytes_togo = 0
+  char_bytes = []
+  for byte in input_bytes:
+    char_bytes.append(byte)
+    if byte >> 7 == 0:  # first bit is 0
+      if bytes_togo > 0:
+        logging.warn('Invalid byte sequence (not enough continuation bytes): "{}"'
+                     .format(' '.join([bin(b)[2:] for b in char_bytes])))
+      yield char_bytes
+      char_bytes = []
+    elif byte >> 6 == 0b11:  # first two bits are 11
+      if bytes_togo > 0:
+        logging.warn('Invalid byte sequence (not enough continuation bytes): "{}"'
+                     .format(' '.join([bin(b)[2:] for b in char_bytes])))
+        char_bytes = []
+        bytes_togo = 0
+      num_leading_bits = count_leading_bits(byte)
+      bytes_togo = num_leading_bits - 1
+    elif byte >> 6 == 0b10:  # first two bits are 10
+      if bytes_togo == 0:
+        logging.warn('Invalid byte sequence (misplaced continuation byte): "{}"'.format(byte))
+        char_bytes = []
+      else:
+        bytes_togo -= 1
+        if bytes_togo == 0:
+          if len(char_bytes) > 4:
+            logging.warn('Invalid byte sequence (more than 4 bytes): "{}"'
+                         .format(' '.join([bin(b)[2:] for b in char_bytes])))
+          yield char_bytes
+          char_bytes = []
+  if len(char_bytes) > 0:
+    logging.warn('Invalid byte sequence (not enough continuation bytes): "{}"'
+                 .format(' '.join([bin(b)[2:] for b in char_bytes])))
+
+
+def count_leading_bits(byte, width=8):
+  """Count the leading bits of the byte.
+  0b11110000 -> 4
+  0b11100100 -> 3
+  0b01110000 -> 0"""
+  if not width:
+    width = byte.bit_length()
+  last_zero = 0
+  for i in range(width):
+    if byte & 0b1 == 0:
+      last_zero = i+1
+    byte = byte >> 1
+  return width-last_zero
+
+
+def char_bytes_to_code_point(char_bytes, method='bitwise'):
+  if method.startswith('str'):
+    return char_bytes_to_code_point_str(char_bytes)
+  if method.startswith('bit'):
+    return char_bytes_to_code_point_bit(char_bytes)
+
+
+def char_bytes_to_code_point_str(char_bytes):
   """Turn a byte sequence for a single character into the int for the code point it encodes."""
   code_point_bits = None
   for byte in char_bytes:
@@ -253,6 +323,34 @@ def char_bytes_to_code_point(char_bytes):
       assert byte.startswith('10'), byte
       code_point_bits += byte[2:]
   return int(code_point_bits, 2)
+
+
+def char_bytes_to_code_point_bit(char_bytes):
+  """Turn a byte sequence for a single character into the int for the code point it encodes.
+  Input should be a sequence of byte values as integers."""
+  code_point = None
+  for byte in char_bytes:
+    if code_point is None:
+      if byte >> 7 == 0:  # first bit is 0
+        # ASCII (single-byte) character.
+        code_point = byte
+        break
+      elif byte >> 6 == 0b11:  # first two bits are 11
+        # Leading byte of a multibyte sequence.
+        num_leading_bits = count_leading_bits(byte)
+        num_code_point_bits = 8 - num_leading_bits
+        mask = 2**num_code_point_bits - 1
+        code_point = byte & mask
+      else:
+        logging.warn('Invalid byte sequence: "{}" (error on byte {})'
+                     .format(' '.join([bin(b)[2:] for b in char_bytes]), bin(byte)[2:]))
+        raise ValueError
+    else:
+      # Continuation byte of a multibyte sequence.
+      assert byte >> 6 == 0b10, bin(byte)  # first two bits are 10
+      code_point_bits = byte & 0b00111111
+      code_point = (code_point << 6) + code_point_bits
+  return code_point
 
 
 def format_code_point_output(code_point_int):
