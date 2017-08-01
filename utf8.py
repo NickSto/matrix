@@ -21,7 +21,7 @@ def make_argparser():
     help='Whether the input is UTF-8 encoded bytes, or Unicode characters.')
   parser.add_argument('-o', '--output-type', choices=('bytes', 'chars'), default='chars',
     help='What to convert your input into.')
-  parser.add_argument('-I', '--input-format', choices=('hex', 'int', 'str'), default='str',
+  parser.add_argument('-I', '--input-format', choices=('hex', 'int', 'bin', 'str',), default='str',
     help='The format of the input. "str" means to interpret the input argument as the literal '
          'Unicode characters. For "hex", you can include characters outside [0-9A-F]. They will '
          'be removed. If you are giving "chars" in hex (code points), separate them with spaces or '
