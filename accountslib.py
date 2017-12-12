@@ -18,6 +18,7 @@ def parse(lines):
   Provide a file-like object, a list of lines, or anything else that can be
   iterated through to produce lines."""
   # Parse the file, line by line, using a state machine.
+  # Let's try to avoid regex this time!
   state = 'start'
   section = None
   subsection = None
@@ -31,29 +32,34 @@ def parse(lines):
     if line.lstrip().startswith('#'):
       continue
     # Make sure we're in the right section.
-    if line.startswith('=====') and line.count('=') >= 70:
+    if line.startswith('======================================================================'):
       if state == 'section_label':
         state = 'section_end'
       else:
         state = 'section_start'
     elif state == 'section_start':
-      if line.startswith('>>'):
+      # Does the line start with exactly two '>'s?
+      if len(line) > 2 and line[:2] == '>>' and line[2] != '>':
         state = 'section_label'
-        section = line.lstrip('>').lower()
+        # Section name is the lowercase of the part after '>>'.
+        section = line[2:].lower()
       else:
         raise FormatError('Expected ">>" section label after "=====" line, at line {}:\n{!r}'
                           .format(line_num, line_raw))
     elif section == 'online':
       # Make sure we're in the right subsection.
-      if line.startswith('-----') and line.count('-') >= 70:
+      # Subsection headers start with a line of at least 70 -'s.
+      if line.startswith('----------------------------------------------------------------------'):
         if state == 'subsection_label':
           state = 'subsection_end'
         else:
           state = 'subsection_start'
       elif state == 'subsection_start':
-        if line.startswith('>'):
+        # Does the line start with exactly 1 '>'?
+        if len(line) > 1 and line[0] == '>' and line[1] != '>':
           state = 'subsection_label'
-          subsection = line.lstrip('>').lower()
+          # Subsection name is the lowercase of the part after '>'.
+          subsection = line[1:].lower()
         else:
           raise FormatError('Expected ">" subsection label after "-----" line, at line {}:\n{!r}'
                             .format(line_num, line_raw))
@@ -65,7 +71,8 @@ def parse(lines):
           # Return the last account and start a new one.
           if entry is not None:
             yield entry
-          entry_name = line.rstrip(':')
+          # Remove ending ':'.
+          entry_name = line[:-1]
           entry = Entry(entry_name)
         elif line.startswith('\t') or line.startswith(' '):
           # We're inside an entry, on an indented line.
@@ -84,13 +91,17 @@ def parse(lines):
             # We're at a new section label.
             section_str = line[1:-1]
             entry.section = section_str
-          elif line.startswith('**') and line.endswith('**'):
-            # We're at a entry-level **flag**
+          elif line.startswith('*') and line.endswith('*'):
+            if not (len(line) > 4 and line[:2] == '**' and line[2] != '*'
+                and line[-2:] == '**' and line[-3] != '*'):
+              raise FormatError('Wrong number of *\'s in what looks like a **flag** at line {}\n{!r}'
+                                .format(line_num, line_raw))
+            # We're at an entry-level **flag**.
             flag = line[2:-2]
             entry.flags.add(flag)
           else:
             # We're at a key/value line (or a [section] key/value one-liner).
-            fields = line.split('\t')
+            fields = line_raw.lstrip('\t ').rstrip('\r\n').split('\t')
             if len(fields) < 2:
               raise FormatError('Expected key/value delimited by tabs at line {}:\n{!r}'
                                 .format(line_num, line_raw))
@@ -127,9 +138,12 @@ def parse(lines):
 
 
 def _parse_values(values_str):
-  values_strs = values_str.split(';')
+  values_strs = _split_respect_escapes(values_str, ';', '\\')
   values = []
   for value_str in values_strs:
+    # Remove the escape character.
+    #TODO: Respect escape character in the following parsing.
+    value_str = value_str.replace('\\', '')
     # The one use of regex :(
     flags = re.findall(FLAG_REGEX, value_str)
     if flags:
@@ -144,6 +158,31 @@ def _parse_values(values_str):
       value.flags.add(flag)
     values.append(value)
   return values
+
+
+def _split_respect_escapes(raw_str, split_char, escape_char='\\'):
+  """Same as str.split(), but with an escape character which will allow the split character to be
+  ignored."""
+  assert split_char != escape_char, (split_char, escape_char)
+  fields = []
+  escaped = False
+  start = 0
+  end = 0
+  for i in range(len(raw_str)):
+    char = raw_str[i]
+    if escaped:
+      escaped = False
+    elif char == split_char:
+      end = i
+      field = raw_str[start:end].replace(escape_char, '')
+      fields.append(field)
+      start = end = i+1
+    elif char == escape_char:
+      escaped = True
+  end = len(raw_str)+1
+  field = raw_str[start:end].replace(escape_char, '')
+  fields.append(field)
+  return fields
 
 
 class Entry(object):
