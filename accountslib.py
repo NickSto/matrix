@@ -41,7 +41,7 @@ def parse(lines):
         state = 'section_label'
         section = line.lstrip('>').lower()
       else:
-        raise FormatError('Expected ">>" section label after "=====" line, at line {}:\n{}'
+        raise FormatError('Expected ">>" section label after "=====" line, at line {}:\n{!r}'
                           .format(line_num, line_raw))
     elif section == 'online':
       # Make sure we're in the right subsection.
@@ -55,7 +55,7 @@ def parse(lines):
           state = 'subsection_label'
           subsection = line.lstrip('>').lower()
         else:
-          raise FormatError('Expected ">" subsection label after "-----" line, at line {}:\n{}'
+          raise FormatError('Expected ">" subsection label after "-----" line, at line {}:\n{!r}'
                             .format(line_num, line_raw))
       elif subsection == 'accounts':
         # Parse the actual accounts info.
@@ -92,7 +92,7 @@ def parse(lines):
             # We're at a key/value line (or a [section] key/value one-liner).
             fields = line.split('\t')
             if len(fields) < 2:
-              raise FormatError('Expected key/value delimited by tabs at line {}:\n{}'
+              raise FormatError('Expected key/value delimited by tabs at line {}:\n{!r}'
                                 .format(line_num, line_raw))
             elif len(fields) >= 3 and fields[0].startswith('[') and fields[0].endswith(']'):
               # It's a one-liner [section] key: value.
@@ -100,7 +100,7 @@ def parse(lines):
               if fields[1].endswith(':'):
                 key = fields[1][:-1]
               else:
-                raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
+                raise FormatError('Malformed key/value at line {}:\n{!r}'.format(line_num, line_raw))
               values_str = fields[-1]
               values = _parse_values(values_str)
               if section_str == Entry.meta_section:
@@ -114,7 +114,7 @@ def parse(lines):
               if key_str.endswith(':'):
                 key = key_str.rstrip(':')
               else:
-                raise FormatError('Malformed key/value at line {}:\n{}'.format(line_num, line_raw))
+                raise FormatError('Malformed key/value at line {}:\n{!r}'.format(line_num, line_raw))
               values = _parse_values(values_str)
               if entry.section == Entry.meta_section:
                 entry.add_meta_values(key, values)
@@ -122,7 +122,7 @@ def parse(lines):
                 entry.add_values(key, values)
         elif line.strip():
           raise FormatError('Expected entry header, account or section label, or key/value at line '
-                            '{}:\n{}'.format(line_num, line_raw))
+                            '{}:\n{!r}'.format(line_num, line_raw))
   yield entry
 
 
@@ -137,7 +137,7 @@ def _parse_values(values_str):
       if match:
         value = Value(match.group(1))
       else:
-        raise FormatError('Malformed key/value line. Failed on values "{}"'.format(values_str))
+        raise FormatError('Malformed key/value line. Failed on values "{!r}"'.format(values_str))
     else:
       value = Value(value_str.strip())
     for flag in flags:
