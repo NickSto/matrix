@@ -62,6 +62,8 @@ def main(argv):
         else:
           # Otherwise, we haven't seen them yet. Let's wait for them to start.
           continue
+      if not maximums:
+        logging.warning('Aquired a lock! Found a matching process (or processes).')
       if args.log:
         values = []
         for key in sorted(stats.keys()):
