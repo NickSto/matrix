@@ -57,11 +57,15 @@ def main(argv):
 
   # Process format arguments.
   input_format = args.input_format
-  if args.output_type == 'bytes' and args.output_format == 'desc':
-    # The default output for bytes should be hex.
-    output_format = 'hex'
-  elif args.output_type == 'bytes' and args.output_format == 'str':
-    fail('"str" is an invalid output format for type "bytes".')
+  if args.input_type == 'bytes' and args.input_format == 'str':
+    # The default input format for bytes should be hex.
+    input_format = 'hex'
+  if args.output_type == 'bytes':
+    if args.output_format == 'desc':
+      # The default output for bytes should be hex.
+      output_format = 'hex'
+    elif args.output_format == 'str':
+      fail('"str" is an invalid output format for type "bytes".')
   else:
     output_format = args.output_format
 
