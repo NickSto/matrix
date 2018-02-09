@@ -17,18 +17,14 @@ API_DOMAIN = 'api.pinboard.in'
 GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'
 ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'
 MAX_RESPONSE = 16384 # bytes
-ARG_DEFAULTS = {'pause':3.05, 'log':sys.stderr, 'volume':logging.ERROR}
-USAGE = "%(prog)s [options]"
 DESCRIPTION = """Bookmark open tabs from a Firefox session with Pinboard."""
 
 # API documentation: https://pinboard.in/api
 # Get the auth token from https://pinboard.in/settings/password
 
-def main(argv):
 
+def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.set_defaults(**ARG_DEFAULTS)
-
   parser.add_argument('session', metavar='backup.session',
     help='Session Manager .session file.')
   parser.add_argument('-t', '--auth-token',
@@ -52,18 +48,24 @@ def main(argv):
   parser.add_argument('-D', '--skip-domains',
     help='Do not archive tabs from these domains. Give as a comma-delimited list, e.g. "tumblr.com,'
          'tastefullyoffensive.com,thefrogman.me,imgur.com,instagram.com,vine.co,pleated-jeans.com"')
-  parser.add_argument('-p', '--pause', type=float,
+  parser.add_argument('-p', '--pause', type=float, default=3.05,
     help='How many seconds to wait in-between each request to the API. The policy in the '
          'documentation (https://pinboard.in/api) is no more than 1 every 3 seconds. You should '
          'get a 429 response if it\'s exceeded. Default: %(default)s.')
   parser.add_argument('-r', '--record', type=argparse.FileType('w'),
     help='Write a record of tabs archived to this file.')
-  parser.add_argument('-l', '--log', type=argparse.FileType('w'),
+  parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL)
-  parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
+  parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO,
+    default=logging.INFO)
   parser.add_argument('-d', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
+  return parser
 
+
+def main(argv):
+
+  parser = make_argparser()
   args = parser.parse_args(argv[1:])
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
