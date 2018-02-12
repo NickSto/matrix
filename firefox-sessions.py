@@ -20,6 +20,10 @@ def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
   parser.add_argument('session', metavar='session.json', nargs='?', default=sys.stdin,
     help='The uncompressed version of the recovery.jsonlz4 or previous.jsonlz4.')
+  parser.add_argument('-t', '--titles', action='store_true',
+    help='Print tab titles.')
+  parser.add_argument('-u', '--urls', action='store_true',
+    help='Print tab urls.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -39,7 +43,7 @@ def main(argv):
 
   session = read_session_file(args.session)
 
-  print(*get_summary(session), sep='\n')
+  print(*format_contents(session, args.titles, args.urls), sep='\n')
 
 
 def read_session_file(session_arg):
@@ -59,13 +63,20 @@ def read_session_file(session_arg):
     fail('Error: Unrecognized session file extension ".{}".'.format(ext))
 
 
-def get_summary(session):
+def format_contents(session, titles=False, urls=False):
   output = []
   total_tabs = 0
   for w, window in enumerate(session['windows']):
     tabs = len(window['tabs'])
-    output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
     total_tabs += tabs
+    output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
+    for tab in window['tabs']:
+      if titles:
+        output.append('  '+tab['entries'][-1]['title'])
+      if urls:
+        output.append('    '+tab['entries'][-1]['url'])
+    if titles or urls:
+      output.append('')
   output.append('Total:    {:3d} tabs'.format(total_tabs))
   return output
 
