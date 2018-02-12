@@ -57,19 +57,34 @@ def main(argv):
 
 def read_session_file(session_arg):
   if session_arg is sys.stdin:
+    # If it's coming into stdin, assume it's already pure JSON.
     return json.load(session_arg)
-  if session_arg.endswith('.jsonlz4'):
+  elif session_arg.endswith('.jsonlz4'):
+    # It's JSON compressed in Mozilla's custom format.
     if not shutil.which('dejsonlz4'):
       fail('Error: Cannot find "dejsonlz4" command to decompress session file.')
     process = subprocess.Popen(['dejsonlz4', session_arg, '-'], stdout=subprocess.PIPE)
     session_str = str(process.stdout.read(), 'utf8')
     return json.loads(session_str)
+  elif session_arg.endswith('.session'):
+    # It's a Session Manager .session file.
+    return file_to_json(session_arg)
   elif session_arg.endswith('.json'):
+    # It's a pure JSON file.
     with open(session_arg) as session_file:
       return json.load(session_file)
   else:
     ext = os.path.splitext(session_arg)[1]
     fail('Error: Unrecognized session file extension ".{}".'.format(ext))
+
+
+def file_to_json(path):
+  line_num = 0
+  with open(path, 'rU', encoding='utf8') as session_file:
+    for line in session_file:
+      line_num += 1
+      if line_num == 5:
+        return json.loads(line)
 
 
 def format_contents(session, titles=False, urls=False, format='human'):
@@ -80,20 +95,20 @@ def format_contents(session, titles=False, urls=False, format='human'):
     tab_counts.append(tabs)
     if format == 'human':
       output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
-    for tab in window['tabs']:
+    for tab in get_tabs(window):
       if not (titles or urls):
         continue
       elif format == 'human':
         if titles:
-          output.append('  '+tab['entries'][-1]['title'])
+          output.append('  '+tab['title'])
         if urls:
-          output.append('    '+tab['entries'][-1]['url'])
+          output.append('    '+tab['url'])
       elif format == 'tsv':
         fields = []
         if titles:
-          fields.append(tab['entries'][-1]['title'])
+          fields.append(tab['title'])
         if urls:
-          fields.append(tab['entries'][-1]['url'])
+          fields.append(tab['url'])
         if fields:
           output.append('\t'.join(fields))
     if format == 'human' and (titles or urls):
@@ -103,6 +118,14 @@ def format_contents(session, titles=False, urls=False, format='human'):
   elif format == 'tsv' and not (titles or urls):
     output.append('\t'.join([str(c) for c in tab_counts]))
   return output
+
+
+def get_tabs(window):
+  for tab in window['tabs']:
+    last_history_item = tab['entries'][-1]
+    title = last_history_item.get('title', '')
+    url = last_history_item.get('url')
+    yield {'title':title, 'url':url}
 
 
 def tone_down_logger():
