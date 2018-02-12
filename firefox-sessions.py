@@ -24,6 +24,14 @@ def make_argparser():
     help='Print tab titles.')
   parser.add_argument('-u', '--urls', action='store_true',
     help='Print tab urls.')
+  parser.add_argument('-H', '--human', action='store_const', const='human', dest='format',
+    default='human',
+    help='Print in human-readable format (default). If no fields are specified, this will only '
+         'print the number of tabs per window, plus a total.')
+  parser.add_argument('-T', '--tsv', action='store_const', const='tsv', dest='format',
+    help='Print in the selected fields in tab-delimited columns, in this order: url, title. If no '
+         'fields are specified, this will just print a tab-delimited list of the number of tabs '
+         'per window.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -43,7 +51,8 @@ def main(argv):
 
   session = read_session_file(args.session)
 
-  print(*format_contents(session, args.titles, args.urls), sep='\n')
+  output = format_contents(session, args.titles, args.urls, args.format)
+  print(*output, sep='\n')
 
 
 def read_session_file(session_arg):
@@ -63,21 +72,36 @@ def read_session_file(session_arg):
     fail('Error: Unrecognized session file extension ".{}".'.format(ext))
 
 
-def format_contents(session, titles=False, urls=False):
+def format_contents(session, titles=False, urls=False, format='human'):
   output = []
-  total_tabs = 0
+  tab_counts = []
   for w, window in enumerate(session['windows']):
     tabs = len(window['tabs'])
-    total_tabs += tabs
-    output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
+    tab_counts.append(tabs)
+    if format == 'human':
+      output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
     for tab in window['tabs']:
-      if titles:
-        output.append('  '+tab['entries'][-1]['title'])
-      if urls:
-        output.append('    '+tab['entries'][-1]['url'])
-    if titles or urls:
+      if not (titles or urls):
+        continue
+      elif format == 'human':
+        if titles:
+          output.append('  '+tab['entries'][-1]['title'])
+        if urls:
+          output.append('    '+tab['entries'][-1]['url'])
+      elif format == 'tsv':
+        fields = []
+        if titles:
+          fields.append(tab['entries'][-1]['title'])
+        if urls:
+          fields.append(tab['entries'][-1]['url'])
+        if fields:
+          output.append('\t'.join(fields))
+    if format == 'human' and (titles or urls):
       output.append('')
-  output.append('Total:    {:3d} tabs'.format(total_tabs))
+  if format == 'human':
+    output.append('Total:    {:3d} tabs'.format(sum(tab_counts)))
+  elif format == 'tsv' and not (titles or urls):
+    output.append('\t'.join([str(c) for c in tab_counts]))
   return output
 
 
