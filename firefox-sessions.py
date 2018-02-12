@@ -6,20 +6,21 @@ from __future__ import unicode_literals
 import os
 import sys
 import json
-import errno
 import shutil
 import logging
 import argparse
 import subprocess
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-DESCRIPTION = """"""
+DESCRIPTION = """Read and manipulate browsing sessions from Firefox."""
 
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('session', metavar='session.json', nargs='?', default=sys.stdin,
-    help='The uncompressed version of the recovery.jsonlz4 or previous.jsonlz4.')
+  parser.add_argument('session', nargs='?', default=sys.stdin,
+    help='The session file. Accepts Firefox\'s recovery.jsonlz4 and previous.jsonlz4 files, as '
+         'well as Session Manager\'s .session files. It also works on the pure .json '
+         'representation of either.')
   parser.add_argument('-t', '--titles', action='store_true',
     help='Print tab titles.')
   parser.add_argument('-u', '--urls', action='store_true',
@@ -147,6 +148,5 @@ def fail(message):
 if __name__ == '__main__':
   try:
     sys.exit(main(sys.argv))
-  except IOError as ioe:
-    if ioe.errno != errno.EPIPE:
-      raise
+  except BrokenPipeError:
+    pass
