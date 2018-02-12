@@ -11,7 +11,7 @@ import argparse
 import http.client
 import urllib.parse
 import xml.etree.ElementTree
-session_manager = __import__('session-manager')
+session_reader = __import__('firefox-sessions')
 
 API_DOMAIN = 'api.pinboard.in'
 GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'
@@ -25,7 +25,7 @@ DESCRIPTION = """Bookmark open tabs from a Firefox session with Pinboard."""
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('session', metavar='backup.session',
+  parser.add_argument('session', metavar='backup.session', nargs='?', default=sys.stdin,
     help='Session Manager .session file.')
   parser.add_argument('-t', '--auth-token',
     help='Your Pinboard API authentication token. Available from '
@@ -78,7 +78,7 @@ def main(argv):
   if args.skip_domains:
     skip_domains = args.skip_domains.split(',')
 
-  session = session_manager.file_to_json(args.session)
+  session = session_reader.read_session_file(args.session)
 
   if args.window:
     target_window, target_tabs = parse_window_spec(args.window)
@@ -86,7 +86,7 @@ def main(argv):
     for window in session['windows']:
       window_num += 1
       if window_num == target_window:
-        num_tabs = len(list(session_manager.get_tabs(window)))
+        num_tabs = len(list(session_reader.get_tabs(window)))
         if num_tabs == target_tabs:
           logging.info('Found specified --window (number {}, with {} tabs).'
                        .format(target_window, target_tabs))
@@ -98,7 +98,7 @@ def main(argv):
   else:
     window = get_biggest_window(session)
     logging.warn('Found biggest window: {} tabs.'
-                 .format(len(list(session_manager.get_tabs(window)))))
+                 .format(len(list(session_reader.get_tabs(window)))))
 
   # Go through the tabs, determine which to archive.
   tabs = []
@@ -110,7 +110,7 @@ def main(argv):
     archiving = True
   begin = False
   end = False
-  for tab in session_manager.get_tabs(window):
+  for tab in session_reader.get_tabs(window):
     # Check when to start.
     if args.begin and tab['title'].startswith(args.begin):
       begin_matches.append(tab['title'])
@@ -189,7 +189,7 @@ def get_biggest_window(session):
   max_tabs = 0
   biggest_window = None
   for window in session['windows']:
-    num_tabs = len(list(session_manager.get_tabs(window)))
+    num_tabs = len(list(session_reader.get_tabs(window)))
     if num_tabs > max_tabs:
       max_tabs = num_tabs
       biggest_window = window
