@@ -81,7 +81,7 @@ def main(argv):
   session = session_reader.read_session_file(args.session)
 
   if args.window:
-    target_window, target_tabs = parse_window_spec(args.window)
+    target_window, target_tabs = session_reader.parse_window_spec(args.window)
     window_num = 0
     for window in session['windows']:
       window_num += 1
@@ -172,17 +172,6 @@ def main(argv):
           result = 'FAILED'
         args.record.write('{}\t{}\t{}\n'.format(result, tab['title'], tab['url']))
       time.sleep(args.pause)
-
-
-def parse_window_spec(window_spec):
-  fields = window_spec.split(':')
-  assert len(fields) == 2, 'Invalid format for --window (must be 2 colon-delimited fields)'
-  try:
-    target_window = int(fields[0])
-    target_tabs = int(fields[1])
-  except ValueError:
-    fail('Invalid format for --window (WindowNum and NumTabs must be integers).')
-  return target_window, target_tabs
 
 
 def get_biggest_window(session):
