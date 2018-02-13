@@ -9,6 +9,7 @@ import time
 import json
 import shutil
 import logging
+import tempfile
 import argparse
 import subprocess
 assert sys.version_info.major >= 3, 'Python 3 required'
@@ -36,6 +37,8 @@ def make_argparser():
          'per window.')
   parser.add_argument('-J', '--json', action='store_const', const='json', dest='format',
     help='Print output in the Firefox session JSON format.')
+  parser.add_argument('-c', '--compress',
+    help='Compress output into jsonlz4 and write to this file. Only works with --json output.')
   parser.add_argument('-w', '--windows', metavar='window:tabs', nargs='*', default=(),
     help='Select a certain set of windows to print, instead of the entire session. Use the format '
          '"WindowNum:NumTabs" (e.g. "2:375"). The two, colon-delimited numbers are the window '
@@ -59,6 +62,12 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
+  if args.compress:
+    if not args.format == 'json':
+      fail('Error: Can only use --compress on --json output.')
+    if not shutil.which('jsonlz4'):
+      fail('Error: Cannot find "jsonlz4" command to --compress output.')
+
   targets = set()
   for window_spec in args.windows:
     target_window, target_tabs = parse_window_spec(window_spec)
@@ -68,7 +77,10 @@ def main(argv):
   session = filter_session(session, targets)
 
   if args.format == 'json':
-    json.dump(session, sys.stdout)
+    if args.compress:
+      write_jsonlz4(session, args.compress)
+    else:
+      json.dump(session, sys.stdout)
   else:
     output = format_contents(session, args.titles, args.urls, args.format)
     print(*output, sep='\n')
@@ -145,6 +157,20 @@ def file_to_json(path):
       line_num += 1
       if line_num == 5:
         return json.loads(line)
+
+
+def write_jsonlz4(session, jsonlz4_path):
+  dir_path = os.path.dirname(jsonlz4_path)
+  json_file = tempfile.NamedTemporaryFile(mode='w', dir=dir_path, suffix='.json', delete=False)
+  try:
+    json.dump(session, json_file)
+    json_file.close()
+    subprocess.check_call(['jsonlz4', json_file.name, jsonlz4_path])
+  finally:
+    if not json_file.closed:
+      json_file.close()
+    if os.path.exists(json_file.name):
+      os.remove(json_file.name)
 
 
 def format_contents(session, titles=False, urls=False, format='human'):
