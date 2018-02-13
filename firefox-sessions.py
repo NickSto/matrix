@@ -35,6 +35,12 @@ def make_argparser():
          'per window.')
   parser.add_argument('-J', '--json', action='store_const', const='json', dest='format',
     help='Print output in the Firefox session JSON format.')
+  parser.add_argument('-w', '--windows', metavar='window:tabs', nargs='*', default=(),
+    help='Select a certain set of windows to print, instead of the entire session. Use the format '
+         '"WindowNum:NumTabs" (e.g. "2:375"). The two, colon-delimited numbers are the window '
+         'number, as displayed by this script, and the number of tabs in it (to make sure we\'re '
+         'talking about the right window). Note: All the global session data will be included, no '
+         'matter what windows are chosen.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -52,13 +58,30 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
+  targets = set()
+  for window_spec in args.windows:
+    target_window, target_tabs = parse_window_spec(window_spec)
+    targets.add((target_window, target_tabs))
+
   session = read_session_file(args.session)
+  session = filter_session(session, targets)
 
   if args.format == 'json':
     json.dump(session, sys.stdout)
   else:
     output = format_contents(session, args.titles, args.urls, args.format)
     print(*output, sep='\n')
+
+
+def parse_window_spec(window_spec):
+  fields = window_spec.split(':')
+  assert len(fields) == 2, 'Invalid format for --window (must be 2 colon-delimited fields)'
+  try:
+    target_window = int(fields[0])
+    target_tabs = int(fields[1])
+  except ValueError:
+    fail('Invalid format for --window (WindowNum and NumTabs must be integers).')
+  return target_window, target_tabs
 
 
 def read_session_file(session_arg):
@@ -82,6 +105,31 @@ def read_session_file(session_arg):
   else:
     ext = os.path.splitext(session_arg)[1]
     fail('Error: Unrecognized session file extension ".{}".'.format(ext))
+
+
+def filter_session(session, targets):
+  if not targets:
+    return session
+  # Make a shallow copy of the session dict, but empty the windows list.
+  new_session = {}
+  for key, value in session.items():
+    if key == 'windows':
+      new_session['windows'] = []
+    else:
+      new_session[key] = value
+  # Insert the target windows.
+  hits = set()
+  for w, window in enumerate(session['windows']):
+    tabs = len(window['tabs'])
+    if (w+1, tabs) in targets:
+      new_session['windows'].append(window)
+      hits.add((w+1, tabs))
+  # Check there weren't targets given with no match.
+  if hits != targets:
+    misses = targets - hits
+    misses_str = '", "'.join(['{}:{}'.format(*miss) for miss in misses])
+    fail('Error: No windows found that match the target(s) "{}".'.format(misses_str))
+  return new_session
 
 
 def file_to_json(path):
