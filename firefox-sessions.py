@@ -175,13 +175,15 @@ def join_sessions(session1, session2):
   in the input sessions may be altered, which themselves may be altered."""
   new_session = {}
   # version key:
-  try:
-    if not (session1['version'][0] == session2['version'][0] == 'sessionrestore'):
-      fail('Error: Unrecognized "version" value(s): {!r}, {!r}'
-           .format(session1.get('version'), session2.get('version')))
-  except (KeyError, IndexError):
-    fail('Error: Unrecognized "version" value(s): {!r}, {!r}'
-         .format(session1.get('version'), session2.get('version')))
+  for session in (session1, session2):
+    if 'version' in session:
+      version = session['version']
+      try:
+        if version[0] != 'sessionrestore' or version[1] != 1:
+          fail('Error: Unrecognized "version" value: {!r}'.format(version))
+      except (KeyError, IndexError, TypeError):
+        fail('Error: Unrecognized "version" value: {!r}'.format(version))
+  new_session['version'] = ['sessionrestore', 1]
   # windows key:
   if 'windows' not in session1 or 'windows' not in session2:
     fail('Error: empty session (no windows)!')
@@ -204,13 +206,10 @@ def join_sessions(session1, session2):
   else:
     new_session['cookies'] = []
   # session key:
-  try:
-    session_data1 = session1['session']
-    session_data2 = session2['session']
-  except KeyError:
-    fail('Error: Missing "session" key.')
+  session_data1 = session1.get('session', {})
+  session_data2 = session2.get('session', {})
   now = int(time.time()*1000)
-  start_time = min(session_data1.get('startTime', now), session_data2.get('startTime', now))
+  start_time = min(session_data1.get('startTime', now-1), session_data2.get('startTime', now-1))
   recent_crashes = max(session_data1.get('recentCrashes', 0), session_data2.get('recentCrashes', 0))
   new_session['session'] = session_data1
   new_session['session'].update(session_data2)
@@ -218,9 +217,8 @@ def join_sessions(session1, session2):
   new_session['session']['lastUpdate'] = now
   new_session['session']['recentCrashes'] = recent_crashes
   # global key:
-  if 'global' in session1 or 'global' in session2:
-    new_session['global'] = session1['global']
-    new_session['global'].update(session2['global'])
+  new_session['global'] = session1.get('global', {})
+  new_session['global'].update(session2.get('global', {}))
   # scratchpads key:
   if 'scratchpads' in session1 or 'scratchpads' in session2:
     new_session['scratchpads'] = session1.get('scratchpads', [])
