@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 import os
 import sys
+import time
 import json
 import shutil
 import logging
@@ -110,20 +111,25 @@ def read_session_file(session_arg):
 def filter_session(session, targets):
   if not targets:
     return session
-  # Make a shallow copy of the session dict, but empty the windows list.
-  new_session = {}
-  for key, value in session.items():
-    if key == 'windows':
-      new_session['windows'] = []
-    else:
-      new_session[key] = value
+  # Make a shallow copy of the session dict, but empty the windows list and alter some of the global
+  # variables.
+  new_session = session.copy()
+  new_session['windows'] = []
+  new_session['selectedWindow'] = None
+  if 'lastUpdate' in new_session.get('session', {}):
+    new_session['session']['lastUpdate'] = int(time.time()*1000)
   # Insert the target windows.
+  selected_window = session.get('selectedWindow', 1)
   hits = set()
   for w, window in enumerate(session['windows']):
     tabs = len(window['tabs'])
     if (w+1, tabs) in targets:
       new_session['windows'].append(window)
       hits.add((w+1, tabs))
+      if w+1 == selected_window:
+        new_session['selectedWindow'] = len(new_session['windows'])
+  if new_session['selectedWindow'] is None:
+    new_session['selectedWindow'] = 1
   # Check there weren't targets given with no match.
   if hits != targets:
     misses = targets - hits
