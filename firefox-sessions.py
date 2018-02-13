@@ -14,7 +14,12 @@ import argparse
 import subprocess
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-DESCRIPTION = """Read and manipulate browsing sessions from Firefox."""
+DESCRIPTION = """Read and manipulate browsing sessions from Firefox.
+Firefox's sessions can be found in the profile folders under ~/.mozilla/firefox.
+They're found in the sessionstore-backups folder in the profile folder.
+In that folder, you'll find (as of Firefox 59) recovery.jsonlz4 and previous.jsonlz4.
+The former is saved periodically during your browsing session, while the latter should be a
+snapshot of your former browsing session, saved on shutdown."""
 
 
 def make_argparser():
@@ -37,6 +42,9 @@ def make_argparser():
          'per window.')
   parser.add_argument('-J', '--json', action='store_const', const='json', dest='format',
     help='Print output in the Firefox session JSON format.')
+  parser.add_argument('-i', '--input-format', choices=('json', 'jsonlz4', 'session'),
+    help='Force the input file to be interpreted as a certain format. "session" is the format '
+         'used by the Session Manager extension.')
   parser.add_argument('-c', '--compress',
     help='Compress output into jsonlz4 and write to this file. Only works with --json output.')
   parser.add_argument('-w', '--windows', metavar='window:tabs', nargs='*', default=(),
@@ -78,11 +86,11 @@ def main(argv):
     target_window, target_tabs = parse_window_spec(window_spec)
     targets.add((target_window, target_tabs))
 
-  session = read_session_file(args.session)
+  session = read_session_file(args.session, args.input_format)
   session = filter_session(session, targets)
 
   for session_path in args.join:
-    addition = read_session_file(session_path)
+    addition = read_session_file(session_path, args.input_format)
     session = join_sessions(session, addition)
 
   if args.format == 'json':
@@ -106,27 +114,36 @@ def parse_window_spec(window_spec):
   return target_window, target_tabs
 
 
-def read_session_file(session_arg):
+def read_session_file(session_arg, input_format=None):
   if session_arg is sys.stdin:
     # If it's coming into stdin, assume it's already pure JSON.
     return json.load(session_arg)
-  ext = os.path.splitext(session_arg)[1]
-  if ext == '.jsonlz4':
+  # Detect format by file extension, if the user hasn't specified.
+  if input_format is None:
+    ext = os.path.splitext(session_arg)[1]
+    if ext in ('.jsonlz4', '.baklz4') or ext.startswith('.jsonlz4-'):
+      input_format = 'jsonlz4'
+    elif ext == '.session':
+      input_format = 'session'
+    elif ext in ('.json', '.js', '.bak') or ext.startswith('.js-'):
+      input_format = 'json'
+    else:
+      fail('Error: Unrecognized session file extension "{}".'.format(ext))
+  # Read the different formats.
+  if input_format == 'jsonlz4':
     # It's JSON compressed in Mozilla's custom format.
     if not shutil.which('dejsonlz4'):
       fail('Error: Cannot find "dejsonlz4" command to decompress session file.')
     process = subprocess.Popen(['dejsonlz4', session_arg, '-'], stdout=subprocess.PIPE)
     session_str = str(process.stdout.read(), 'utf8')
     return json.loads(session_str)
-  elif ext == '.session':
+  elif input_format == 'session':
     # It's a Session Manager .session file.
     return file_to_json(session_arg)
-  elif ext in ('.json', '.js', '.bak'):
+  elif input_format == 'json':
     # It's a pure JSON file.
     with open(session_arg) as session_file:
       return json.load(session_file)
-  else:
-    fail('Error: Unrecognized session file extension "{}".'.format(ext))
 
 
 def file_to_json(path):
