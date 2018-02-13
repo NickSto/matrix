@@ -44,9 +44,12 @@ def make_argparser():
          '"WindowNum:NumTabs" (e.g. "2:375"). The two, colon-delimited numbers are the window '
          'number, as displayed by this script, and the number of tabs in it (to make sure we\'re '
          'talking about the right window). Note: All the global session data will be included, no '
-         'matter what windows are chosen.')
+         'matter what windows are chosen. Also, closed windows cannot be selected, even with '
+         '--closed.')
   parser.add_argument('-j', '--join', nargs='*', default=(),
     help='Combine the sessions from these files with the first one (after filtering by --windows).')
+  parser.add_argument('-C', '--closed', action='store_true',
+    help='Include closed windows in the human and tsv outputs.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -88,7 +91,7 @@ def main(argv):
     else:
       json.dump(session, sys.stdout)
   else:
-    output = format_contents(session, args.titles, args.urls, args.format)
+    output = format_contents(session, args.titles, args.urls, args.format, args.closed)
     print(*output, sep='\n')
 
 
@@ -287,35 +290,51 @@ def write_jsonlz4(session, jsonlz4_path):
       os.remove(json_file.name)
 
 
-def format_contents(session, titles=False, urls=False, format='human'):
-  #TODO: Allow showing _closedWindows.
+def format_contents(session, titles=False, urls=False, format='human', closed=False):
   output = []
+  window_lists = [session['windows']]
+  prefixes = ('W',)
+  if closed:
+    closed_windows = session.get('_closedWindows', [])
+    window_lists.append(closed_windows)
+    prefixes = ('W', 'Closed w')
   tab_counts = []
-  for w, window in enumerate(session['windows']):
-    tabs = len(window['tabs'])
-    tab_counts.append(tabs)
-    if format == 'human':
-      output.append('Window {}: {:3d} tabs'.format(w+1, tabs))
-    for tab in get_tabs(window):
-      if not (titles or urls):
-        continue
-      elif format == 'human':
-        if titles:
-          output.append('  '+tab['title'])
-        if urls:
-          output.append('    '+tab['url'])
-      elif format == 'tsv':
-        fields = []
-        if titles:
-          fields.append(tab['title'])
-        if urls:
-          fields.append(tab['url'])
-        if fields:
-          output.append('\t'.join(fields))
-    if format == 'human' and (titles or urls):
-      output.append('')
+  for window_list, prefix in zip(window_lists, prefixes):
+    for w, window in enumerate(window_list):
+      label = prefix+'indow {:3s}'.format(str(w+1)+':')
+      if closed:
+        label_width = '17'
+      else:
+        label_width = '8'
+      format_str = '{:'+label_width+'s} {:3d} tabs'
+      tabs = len(window['tabs'])
+      tab_counts.append(tabs)
+      if format == 'human':
+        output.append(format_str.format(label, tabs))
+      for tab in get_tabs(window):
+        if not (titles or urls):
+          continue
+        elif format == 'human':
+          if titles:
+            output.append('  '+tab['title'])
+          if urls:
+            output.append('    '+tab['url'])
+        elif format == 'tsv':
+          fields = []
+          if titles:
+            fields.append(tab['title'])
+          if urls:
+            fields.append(tab['url'])
+          if fields:
+            output.append('\t'.join(fields))
+      if format == 'human' and (titles or urls):
+        output.append('')
   if format == 'human':
-    output.append('Total:    {:3d} tabs'.format(sum(tab_counts)))
+    if closed:
+      format_str = 'Total:            {:3d} tabs'
+    else:
+      format_str = 'Total:     {:3d} tabs'
+    output.append(format_str.format(sum(tab_counts)))
   elif format == 'tsv' and not (titles or urls):
     output.append('\t'.join([str(c) for c in tab_counts]))
   return output
