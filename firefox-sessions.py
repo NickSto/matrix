@@ -33,6 +33,8 @@ def make_argparser():
     help='Print in the selected fields in tab-delimited columns, in this order: url, title. If no '
          'fields are specified, this will just print a tab-delimited list of the number of tabs '
          'per window.')
+  parser.add_argument('-J', '--json', action='store_const', const='json', dest='format',
+    help='Print output in the Firefox session JSON format.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -52,8 +54,11 @@ def main(argv):
 
   session = read_session_file(args.session)
 
-  output = format_contents(session, args.titles, args.urls, args.format)
-  print(*output, sep='\n')
+  if args.format == 'json':
+    json.dump(session, sys.stdout)
+  else:
+    output = format_contents(session, args.titles, args.urls, args.format)
+    print(*output, sep='\n')
 
 
 def read_session_file(session_arg):
