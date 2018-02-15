@@ -188,8 +188,6 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
     where necessary. The original tracker section is not altered.
   wanted: Missing archives that need to be created. Each element is a dict with the keys 'period'
     and 'copy'."""
-  #TODO: Allow repeat shifts, so that copy 1 can become copy 2, then copy 2 can become copy 3, etc.
-  #      Right now every shift always bumps the copy above it and deletes it.
   new_tracker_section = {}
   wanted = []
   for period in periods:
@@ -199,7 +197,8 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
     for archive in old_copies:
       copies.append(archive.copy())
     new_tracker_section[period] = copies
-    shifting = None
+    last_archive = None
+    shifting = False
     for copy in range(1, required_copies+1):
       # Extend the list if it's not long enough.
       try:
@@ -207,16 +206,16 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
       except IndexError:
         copies.append(None)
       archive = copies[copy-1]
-      # Is the archive from copy-1 being moved up to here?
-      if shifting:
-        archive = shifting
-        copies[copy-1] = shifting
-      shifting = None
       # Check whether this archive is okay.
       if archive is None:
         # Doesn't exist!
         logging.debug('{} copy {} isn\'t in the tracker file.'.format(period, copy))
-        wanted.append({'period':period, 'copy':copy})
+        if shifting:
+          copies[copy-1] = last_archive
+        else:
+          copies[copy-1] = None
+          wanted.append({'period':period, 'copy':copy})
+        shifting = False
       else:
         age = now - archive['timestamp']
         file = archive['file']
@@ -224,19 +223,35 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
         if not os.path.isfile(path):
           # A record for this archive exists, but the file wasn't found.
           logging.warning('{} copy {} is missing (file {!r}).'.format(period, copy, path))
-          wanted.append({'period':period, 'copy':copy})
+          if shifting:
+            copies[copy-1] = last_archive
+          else:
+            copies[copy-1] = None
+            wanted.append({'period':period, 'copy':copy})
+          shifting = False
         elif age > periods[period]*copy:
           # The archive is too old now.
           logging.debug('{} copy {} {} too old ({} > {}).'.format(period, copy, file, age,
                                                                   periods[period]*copy))
-          wanted.append({'period':period, 'copy':copy})
+          if last_archive is not None:
+            # Replace with the previous (next-youngest) copy, if it exists.
+            copies[copy-1] = last_archive
+          else:
+            # If the previous copy doesn't exist, get a new one.
+            copies[copy-1] = None
+            wanted.append({'period':period, 'copy':copy})
+          shifting = False
           if copy >= required_copies:
             # It's the last copy, so it won't be useful as a different copy.
             logging.debug('Removing from {} archive.'.format(period))
           else:
             # Move it up to the next copy.
             logging.debug('Moving to copy {}.'.format(copy+1))
-            shifting = archive
+            shifting = True
+        elif shifting:
+          copies[copy-1] = last_archive
+          shifting = False
+      last_archive = archive
   return new_tracker_section, wanted
 
 
