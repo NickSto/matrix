@@ -57,8 +57,10 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
-  if not os.path.exists(args.file):
+  if not os.path.isfile(args.file):
     fail('Error: Target file {!r} not found.'.format(args.file))
+  if args.destination and not os.path.isdir(args.destination):
+    fail('Error: --destination {!r} not found.'.format(args.destination))
 
   filename = os.path.basename(args.file)
   destination = args.destination or os.path.dirname(args.file)
@@ -82,7 +84,7 @@ def main(argv):
   # If new archives are needed, copy the target file to use as a new archive file, and update the
   # tracker with its path.
   if wanted:
-    archive_file_path = get_archive_path(args.file, args.ext, now=args.now)
+    archive_file_path = get_archive_path(args.file, destination, args.ext, now=args.now)
     logging.info('Copying target file {} to {}'.format(args.file, archive_file_path))
     shutil.copy2(args.file, archive_file_path)
     add_new_file(new_tracker_section, wanted, archive_file_path, now=args.now)
@@ -235,16 +237,18 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
   return new_tracker_section, wanted
 
 
-def get_archive_path(target_path, ext=None, now=NOW):
+def get_archive_path(target_path, destination, ext=None, now=NOW):
+  filename = os.path.basename(target_path)
   if ext is None:
-    base, ext = os.path.splitext(target_path)
+    base, ext = os.path.splitext(filename)
   else:
     if not ext.startswith('.'):
       ext = '.'+ext
-    if target_path.endswith(ext):
-      base = target_path[:-len(ext)]
+    if filename.endswith(ext):
+      base = filename[:-len(ext)]
   time_str = datetime.datetime.fromtimestamp(now).strftime('%Y-%m-%d-%H%M%S')
-  return base+'-'+time_str+ext
+  archive_filename = base+'-'+time_str+ext
+  return os.path.join(destination, archive_filename)
 
 
 def add_new_file(tracker_section, wanted, archive_file_path, now=NOW):
