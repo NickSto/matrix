@@ -37,6 +37,9 @@ def make_argparser():
          '"example.tar-2017-03-23-121700.gz".')
   parser.add_argument('-c', '--copies', default=2,
     help='How many copies to keep per time period.')
+  parser.add_argument('-m', '--min-size', type=int,
+    help='Minimum file size (in bytes). If the target file is smaller than this, do not copy it '
+         'into the archive.')
   parser.add_argument('--now', type=int, default=NOW,
     help='The unix timestamp to use as "now". For debugging.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
@@ -57,10 +60,15 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
+  # Check the input paths exist.
   if not os.path.isfile(args.file):
     fail('Error: Target file {!r} not found.'.format(args.file))
   if args.destination and not os.path.isdir(args.destination):
     fail('Error: --destination {!r} not found.'.format(args.destination))
+
+  if args.min_size and os.path.getsize(args.file) < args.min_size:
+    fail('Error: Target file {!r} smaller than --min-size ({} < {})'
+         .format(args.file, os.path.getsize(args.file), args.min_size))
 
   filename = os.path.basename(args.file)
   destination = args.destination or os.path.dirname(args.file)
