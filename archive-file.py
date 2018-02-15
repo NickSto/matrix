@@ -37,6 +37,8 @@ def make_argparser():
          '"example.tar-2017-03-23-121700.gz".')
   parser.add_argument('-c', '--copies', default=2,
     help='How many copies to keep per time period.')
+  parser.add_argument('--now', type=int, default=NOW,
+    help='The unix timestamp to use as "now". For debugging.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = parser.add_mutually_exclusive_group()
@@ -75,15 +77,15 @@ def main(argv):
 
   # Determine which actions are needed.
   new_tracker_section, wanted = get_plan(tracker_section, destination, args.copies, periods=PERIODS,
-                                         now=NOW)
+                                         now=args.now)
 
   # If new archives are needed, copy the target file to use as a new archive file, and update the
   # tracker with its path.
   if wanted:
-    archive_file_path = get_archive_path(args.file, args.ext, now=NOW)
+    archive_file_path = get_archive_path(args.file, args.ext, now=args.now)
     logging.info('Copying target file {} to {}'.format(args.file, archive_file_path))
     shutil.copy2(args.file, archive_file_path)
-    add_new_file(new_tracker_section, wanted, archive_file_path, now=NOW)
+    add_new_file(new_tracker_section, wanted, archive_file_path, now=args.now)
 
   # Delete the now-unneeded archive files.
   files_to_delete = get_files_to_delete(tracker_section, new_tracker_section)
@@ -190,68 +192,43 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
     and 'copy'."""
   new_tracker_section = {}
   wanted = []
-  for period in periods:
-    # Create a copy of the old list.
+  for period in get_ordered_periods(periods):
     old_copies = tracker_section.get(period, [])
-    copies = []
-    for archive in old_copies:
-      copies.append(archive.copy())
-    new_tracker_section[period] = copies
-    last_archive = None
-    shifting = False
-    for copy in range(1, required_copies+1):
-      # Extend the list if it's not long enough.
-      try:
-        copies[copy-1]
-      except IndexError:
-        copies.append(None)
-      archive = copies[copy-1]
-      # Check whether this archive is okay.
-      if archive is None:
-        # Doesn't exist!
-        logging.debug('{} copy {} isn\'t in the tracker file.'.format(period, copy))
-        if shifting:
-          copies[copy-1] = last_archive
-        else:
-          copies[copy-1] = None
-          wanted.append({'period':period, 'copy':copy})
-        shifting = False
+    new_copies = []
+    # Iterate through each time period, finding which archives are now within that period.
+    # Choose one for each period (or None, if none exist).
+    #TODO: Make a big list of all the archives in all the time periods, and choose whichever one
+    #      fits our time period best.
+    period_length = periods[period]
+    for i, slot_start_age in enumerate(range(0, period_length*required_copies, period_length)):
+      # Figure out the boundaries of this time slot.
+      slot_end_age = slot_start_age + period_length
+      slot_end = now - slot_start_age
+      slot_start = now - slot_end_age
+      candidates = []
+      for j, archive in enumerate(old_copies):
+        # Check that the archive falls within the time period.
+        if archive is not None and slot_start < archive['timestamp'] <= slot_end:
+          # Check that the archive's file exists.
+          path = os.path.join(destination, archive['file'])
+          if os.path.isfile(path):
+            candidates.append(archive)
+          else:
+            logging.warning('{} archive is missing (file {!r}).'.format(period, j+1, path))
+      if candidates:
+        # Choose the oldest archive, if there are multiple.
+        candidates.sort(key=lambda archive: archive['timestamp'])
+        new_copies.append(candidates[0].copy())
       else:
-        age = now - archive['timestamp']
-        file = archive['file']
-        path = os.path.join(destination, file)
-        if not os.path.isfile(path):
-          # A record for this archive exists, but the file wasn't found.
-          logging.warning('{} copy {} is missing (file {!r}).'.format(period, copy, path))
-          if shifting:
-            copies[copy-1] = last_archive
-          else:
-            copies[copy-1] = None
-            wanted.append({'period':period, 'copy':copy})
-          shifting = False
-        elif age > periods[period]*copy:
-          # The archive is too old now.
-          logging.debug('{} copy {} {} too old ({} > {}).'.format(period, copy, file, age,
-                                                                  periods[period]*copy))
-          if last_archive is not None:
-            # Replace with the previous (next-youngest) copy, if it exists.
-            copies[copy-1] = last_archive
-          else:
-            # If the previous copy doesn't exist, get a new one.
-            copies[copy-1] = None
-            wanted.append({'period':period, 'copy':copy})
-          shifting = False
-          if copy >= required_copies:
-            # It's the last copy, so it won't be useful as a different copy.
-            logging.debug('Removing from {} archive.'.format(period))
-          else:
-            # Move it up to the next copy.
-            logging.debug('Moving to copy {}.'.format(copy+1))
-            shifting = True
-        elif shifting:
-          copies[copy-1] = last_archive
-          shifting = False
-      last_archive = archive
+        logging.info('No existing archive can serve as {} copy {}.'.format(period, i+1))
+        if i+1 == 1:
+          # Add it to the wanted list if it's copy 1.
+          # If it's not copy 1, then making a new backup and calling it copy 2, for example, would
+          # end up with a copy 2 younger than copy 1. Or, if we don't have a copy 1 already, we'll
+          # be getting one shortly, which will end up being the same file as this copy 2 anyway.
+          wanted.append({'period':period, 'copy':i+1})
+        new_copies.append(None)
+    new_tracker_section[period] = new_copies
   return new_tracker_section, wanted
 
 
@@ -312,10 +289,15 @@ def delete_files(files_to_delete, destination):
       logging.warning('Warning: Could not find file {!r}'.format(path))
 
 
-def write_tracker(tracker, tracker_path, periods=PERIODS, version=VERSION):
+def get_ordered_periods(periods=PERIODS):
   ordered_periods = []
   for period, age in sorted(periods.items(), key=lambda i: i[1]):
     ordered_periods.append(period)
+  return ordered_periods
+
+
+def write_tracker(tracker, tracker_path, periods=PERIODS, version=VERSION):
+  ordered_periods = get_ordered_periods(periods)
   try:
     with open(tracker_path, 'w') as tracker_file:
       tracker_file.write('>version={}\n'.format(version))
@@ -324,7 +306,8 @@ def write_tracker(tracker, tracker_path, periods=PERIODS, version=VERSION):
         for period in ordered_periods:
           copies = section.get(period, [])
           for i, archive in enumerate(copies):
-            tracker_file.write('\t{}\t{}\t{timestamp}\t{file}\n'.format(period, i+1, **archive))
+            if archive is not None:
+              tracker_file.write('\t{}\t{}\t{timestamp}\t{file}\n'.format(period, i+1, **archive))
   except IOError:
     fail('Could not open file {!r}'.format(tracker_path))
 
