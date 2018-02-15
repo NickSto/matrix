@@ -192,13 +192,16 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
     and 'copy'."""
   new_tracker_section = {}
   wanted = []
+  all_archives = []
+  # Pool all existing archives.
+  for period in periods:
+    for archive in tracker_section.get(period, []):
+      if archive not in all_archives:
+        all_archives.append(archive)
   for period in get_ordered_periods(periods):
-    old_copies = tracker_section.get(period, [])
-    new_copies = []
+    copies = []
     # Iterate through each time period, finding which archives are now within that period.
     # Choose one for each period (or None, if none exist).
-    #TODO: Make a big list of all the archives in all the time periods, and choose whichever one
-    #      fits our time period best.
     period_length = periods[period]
     for i, slot_start_age in enumerate(range(0, period_length*required_copies, period_length)):
       # Figure out the boundaries of this time slot.
@@ -206,7 +209,7 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
       slot_end = now - slot_start_age
       slot_start = now - slot_end_age
       candidates = []
-      for j, archive in enumerate(old_copies):
+      for archive in all_archives:
         # Check that the archive falls within the time period.
         if archive is not None and slot_start < archive['timestamp'] <= slot_end:
           # Check that the archive's file exists.
@@ -214,11 +217,11 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
           if os.path.isfile(path):
             candidates.append(archive)
           else:
-            logging.warning('{} archive is missing (file {!r}).'.format(period, j+1, path))
+            logging.warning('{} archive is missing (file {!r}).'.format(period, path))
       if candidates:
         # Choose the oldest archive, if there are multiple.
         candidates.sort(key=lambda archive: archive['timestamp'])
-        new_copies.append(candidates[0].copy())
+        copies.append(candidates[0].copy())
       else:
         logging.info('No existing archive can serve as {} copy {}.'.format(period, i+1))
         if i+1 == 1:
@@ -227,8 +230,8 @@ def get_plan(tracker_section, destination, required_copies, periods=PERIODS, now
           # end up with a copy 2 younger than copy 1. Or, if we don't have a copy 1 already, we'll
           # be getting one shortly, which will end up being the same file as this copy 2 anyway.
           wanted.append({'period':period, 'copy':i+1})
-        new_copies.append(None)
-    new_tracker_section[period] = new_copies
+        copies.append(None)
+    new_tracker_section[period] = copies
   return new_tracker_section, wanted
 
 
