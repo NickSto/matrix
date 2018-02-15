@@ -12,7 +12,10 @@ import logging
 import tempfile
 import argparse
 import subprocess
+import configparser
 assert sys.version_info.major >= 3, 'Python 3 required'
+
+DEFAULT_FIREFOX_DIR = '~/.mozilla/firefox'
 
 DESCRIPTION = """Read and manipulate browsing sessions from Firefox.
 Firefox's sessions can be found in the profile folders under ~/.mozilla/firefox.
@@ -24,10 +27,11 @@ snapshot of your former browsing session, saved on shutdown."""
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('session', nargs='?', default=sys.stdin,
+  parser.add_argument('session', nargs='?',
     help='The session file. Accepts Firefox\'s recovery.jsonlz4 and previous.jsonlz4 files, as '
          'well as Session Manager\'s .session files. It also works on the pure .json '
-         'representation of either.')
+         'representation of either. Give "-" to read pure JSON from stdin. If not given, this will '
+         'automatically find the recovery.jsonlz4 from your default profile and read that.')
   parser.add_argument('-t', '--titles', action='store_true',
     help='Print tab titles.')
   parser.add_argument('-u', '--urls', action='store_true',
@@ -86,7 +90,12 @@ def main(argv):
     target_window, target_tabs = parse_window_spec(window_spec)
     targets.add((target_window, target_tabs))
 
-  session = read_session_file(args.session, args.input_format)
+  if args.session:
+    session = read_session_file(args.session, args.input_format)
+  else:
+    profile_dir = find_profile(DEFAULT_FIREFOX_DIR)
+    session_path = os.path.join(profile_dir, 'sessionstore-backups/recovery.jsonlz4')
+    session = read_session_file(session_path)
   session = filter_session(session, targets)
 
   for session_path in args.join:
@@ -115,9 +124,9 @@ def parse_window_spec(window_spec):
 
 
 def read_session_file(session_arg, input_format=None):
-  if session_arg is sys.stdin:
+  if session_arg == '-':
     # If it's coming into stdin, assume it's already pure JSON.
-    return json.load(session_arg)
+    return json.load(sys.stdin)
   # Detect format by file extension, if the user hasn't specified.
   if input_format is None:
     ext = os.path.splitext(session_arg)[1]
@@ -363,6 +372,30 @@ def get_tabs(window):
     title = last_history_item.get('title', '')
     url = last_history_item.get('url')
     yield {'title':title, 'url':url}
+
+
+def find_profile(firefox_dir=DEFAULT_FIREFOX_DIR, profiles_ini_filename='profiles.ini'):
+  """Find the default Firefox profile directory by reading the profiles.ini file.
+  If no directory can be successfully found, return None."""
+  firefox_dir_full = os.path.expanduser(firefox_dir)
+  if not os.path.isdir(firefox_dir_full):
+    fail('Error: Could not find Firefox directory {!r}'.format(firefox_dir_full))
+  profiles_ini = os.path.join(firefox_dir_full, profiles_ini_filename)
+  if not os.path.isfile(profiles_ini):
+    fail('Error: Could not find profiles.ini file {!r}'.format(profiles_ini))
+  config = configparser.ConfigParser()
+  config.read(profiles_ini)
+  for section in config.sections():
+    path = config[section].get('Path')
+    is_relative = config[section].get('IsRelative')
+    default = config[section].get('Default')
+    if default == '1':
+      if is_relative == '1':
+        full_path = os.path.join(firefox_dir_full, path)
+      else:
+        full_path = path
+      if os.path.isdir(full_path):
+        return full_path
 
 
 def tone_down_logger():
