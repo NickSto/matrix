@@ -62,6 +62,8 @@ def make_argparser():
     help='Combine the sessions from these files with the first one (after filtering by --windows).')
   parser.add_argument('-C', '--closed', action='store_true',
     help='Include closed windows in the human and tsv outputs.')
+  parser.add_argument('-p', '--print-path', action='store_true',
+    help='Just print the path to the session file (useful when auto-discovering it).')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -91,11 +93,14 @@ def main(argv):
     targets.add((target_window, target_tabs))
 
   if args.session:
-    session = read_session_file(args.session, args.input_format)
+    session_path = args.session
   else:
     profile_dir = find_profile(DEFAULT_FIREFOX_DIR)
     session_path = os.path.join(profile_dir, 'sessionstore-backups/recovery.jsonlz4')
-    session = read_session_file(session_path)
+  if args.print_path:
+    print(session_path)
+    return
+  session = read_session_file(session_path, args.input_format)
   session = filter_session(session, targets)
 
   for session_path in args.join:
