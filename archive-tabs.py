@@ -8,15 +8,10 @@ import time
 import errno
 import logging
 import argparse
-import http.client
 import urllib.parse
-import xml.etree.ElementTree
+import pinboard
 session_reader = __import__('firefox-sessions')
 
-API_DOMAIN = 'api.pinboard.in'
-GET_API_PATH = '/v1/posts/get?auth_token={token}&url={url}'
-ADD_API_PATH = '/v1/posts/add?auth_token={token}&url={url}&description={title}&tags=tab+automated&replace=no'
-MAX_RESPONSE = 16384 # bytes
 DESCRIPTION = """Bookmark open tabs from a Firefox session with Pinboard."""
 
 # API documentation: https://pinboard.in/api
@@ -146,18 +141,18 @@ def main(argv):
     if skip_url(tab['url'], skip_domains):
       continue
     if not args.simulate:
-      request_path = GET_API_PATH.format(token=args.auth_token, url=quote(tab['url']))
-      response = make_request(API_DOMAIN, request_path)
-      done = check_response(response, 'get')
+      request_path = pinboard.GET_API_PATH.format(token=args.auth_token, url=quote(tab['url']))
+      response = pinboard.make_request(pinboard.API_DOMAIN, request_path)
+      done = pinboard.check_response(response, 'get')
       if done:
         logging.info('Tab already bookmarked. Skipping.')
       time.sleep(args.pause)
       if not done:
-        request_path = ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
-                                           title=quote(tab['title']))
-        logging.debug('https://'+API_DOMAIN+request_path)
-        response = make_request(API_DOMAIN, request_path)
-        success = check_response(response, 'add')
+        request_path = pinboard.ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
+                                                    title=quote(tab['title']))
+        logging.debug('https://'+pinboard.API_DOMAIN+request_path)
+        response = pinboard.make_request(pinboard.API_DOMAIN, request_path)
+        success = pinboard.check_response(response, 'add')
         if success:
           logging.info('success')
         else:
@@ -187,72 +182,6 @@ def get_biggest_window(session):
 
 def quote(string):
   return urllib.parse.quote_plus(string)
-
-
-def make_request(domain, path):
-  conex = http.client.HTTPSConnection(domain)
-  #TODO: Both of these steps can throw exceptions. Deal with them.
-  conex.request('GET', path)
-  return conex.getresponse()
-
-
-def check_response(response, request_type):
-  if response.status == 429:
-    # API rate limit reached.
-    fail('Error: API rate limit reached (429 Too Many Requests).')
-  response_body = response.read(MAX_RESPONSE)
-  if request_type == 'get':
-    return parse_get_response(response_body)
-  elif request_type == 'add':
-    return parse_add_response(response_body)
-
-
-def parse_get_response(response_body):
-  """Return True if url is already bookmarked, False if not."""
-  try:
-    root = xml.etree.ElementTree.fromstring(response_body)
-  except xml.etree.ElementTree.ParseError:
-    fail('Error 1: Parsing error in response from API:\n'+response_body)
-  if root.tag == 'posts':
-    if len(root) == 0:
-      return False
-    elif len(root) == 1:
-      return True
-    else:
-      fail('Error: Too many hits when checking if tab is already bookmarked: {} hits'
-           .format(len(root)))
-  elif root.tag == 'result':
-    if root.attrib.get('code') == 'something went wrong':
-      fail('Error: Request failed when checking if tab is already bookmarked.')
-    elif root.attrib.get('code') == 'done':
-      fail('Error: "done" returned instead of result when checking if tab is already bookmarked.')
-    elif 'code' in root.attrib:
-      fail('Error: Received message "{}" when checking if tab is already bookmarked.'
-           .format(root.attrib['code']))
-    else:
-      fail('Error 1: Unrecognized response from API:\n'+response_body)
-  else:
-    fail('Error 2: Unrecognized response from API:\n'+response_body)
-
-
-def parse_add_response(response_body):
-  try:
-    root = xml.etree.ElementTree.fromstring(response_body)
-  except xml.etree.ElementTree.ParseError:
-    fail('Error 2: Parsing error in response from API:\n'+response_body)
-  if root.tag == 'result':
-    try:
-      result = root.attrib['code']
-    except KeyError:
-      fail('Error 3: Unrecognized response from API:\n'+response_body)
-    if result == 'done':
-      return True
-    elif result == 'something went wrong':
-      return False
-    else:
-      fail('Error: Received message "{}" when adding bookmark.'.format(result))
-  else:
-    fail('Error 4: Unrecognized response from API:\n'+response_body)
 
 
 def skip_url(url, skip_domains):
