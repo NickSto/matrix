@@ -66,8 +66,11 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
-  if not args.auth_token and not args.simulate:
-    fail('Error: An --auth-token is required if --simulate is not given.')
+  if not args.simulate:
+    if args.auth_token:
+      api = pinboard.ApiInterface(args.auth_token)
+    else:
+      fail('Error: An --auth-token is required if --simulate is not given.')
 
   skip_domains = []
   if args.skip_domains:
@@ -141,12 +144,12 @@ def main(argv):
     if skip_url(tab['url'], skip_domains):
       continue
     if not args.simulate:
-      done = pinboard.is_url_bookmarked(tab['url'], args.auth_token)
+      done = api.is_url_bookmarked(tab['url'])
       if done:
         logging.info('Tab already bookmarked. Skipping.')
       time.sleep(args.pause)
       if not done:
-        success = pinboard.bookmark_url(tab['url'], tab['title'], args.auth_token)
+        success = api.bookmark_url(tab['url'], tab['title'])
         if success:
           logging.info('success')
         else:
