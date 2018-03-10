@@ -141,18 +141,12 @@ def main(argv):
     if skip_url(tab['url'], skip_domains):
       continue
     if not args.simulate:
-      request_path = pinboard.GET_API_PATH.format(token=args.auth_token, url=quote(tab['url']))
-      response = pinboard.make_request(pinboard.API_DOMAIN, request_path)
-      done = pinboard.check_response(response, 'get')
+      done = pinboard.is_url_bookmarked(tab['url'], args.auth_token)
       if done:
         logging.info('Tab already bookmarked. Skipping.')
       time.sleep(args.pause)
       if not done:
-        request_path = pinboard.ADD_API_PATH.format(token=args.auth_token, url=quote(tab['url']),
-                                                    title=quote(tab['title']))
-        logging.debug('https://'+pinboard.API_DOMAIN+request_path)
-        response = pinboard.make_request(pinboard.API_DOMAIN, request_path)
-        success = pinboard.check_response(response, 'add')
+        success = pinboard.bookmark_url(tab['url'], tab['title'], args.auth_token)
         if success:
           logging.info('success')
         else:
