@@ -7,9 +7,9 @@ import time
 import errno
 import logging
 import argparse
-from lib import simplewrap
-from lib import ipwraplib
-from lib import console
+from utillib import simplewrap
+from utillib import ipwraplib
+from utillib import console
 
 UPTIME_PATH = '/proc/uptime'
 HIGH_BW = 1024*1024*50 # 50 MB/s

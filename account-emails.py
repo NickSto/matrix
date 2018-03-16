@@ -9,7 +9,7 @@ import argparse
 import collections
 import accountslib
 try:
-  from lib import console
+  from utillib import console
 except ImportError:
   console = None
 

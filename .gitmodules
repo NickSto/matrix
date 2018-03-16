@@ -1,6 +1,3 @@
-[submodule "lib"]
-	path = lib
-	url = ../lib
 [submodule "utillib"]
 	path = utillib
 	url = https://github.com/NickSto/utillib.git
