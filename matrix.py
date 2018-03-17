@@ -6,6 +6,10 @@ import random
 
 
 def main(argv):
+  dna = False
+  if len(sys.argv) > 1:
+    if sys.argv[1] == '-d':
+      dna = True
   with curses_screen() as stdscr:
     (height, width) = stdscr.getmaxyx()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
@@ -19,7 +23,10 @@ def main(argv):
           if column['y'] == height or (column['x'] == width - 1 and column['y'] == height - 1):
             done.append(i)
             continue
-          char = chr(random.randrange(33, 127))
+          if dna:
+            char = random.choice(('A', 'C', 'G', 'T'))
+          else:
+            char = chr(random.randrange(33, 127))
           try:
             # addch in the bottom-right corner raises an error.
             if column['y'] == height - 1 and column['y'] == width - 1:
