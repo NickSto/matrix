@@ -44,10 +44,7 @@ def start_the_show(drop_len, source, new_reads):
     while True:
       try:
         # Make a new drop.
-        try:
-          drop = Drop(width, drop_len, source, idle_bases, new_reads)
-        except StopIteration:
-          return
+        drop = Drop(width, drop_len, source, idle_bases, new_reads)
         drops.append(drop)
         done = []
         for i, drop in enumerate(drops):
@@ -57,8 +54,6 @@ def start_the_show(drop_len, source, new_reads):
             continue
           if source == 'fastx':
             char = get_base(drop, idle_bases, new_reads)
-            if char is None:
-              return
           elif source == 'dna':
             char = random.choice(('A', 'C', 'G', 'T'))
           else:
@@ -83,7 +78,7 @@ def start_the_show(drop_len, source, new_reads):
         for i in done:
           del(drops[i])
         # time.sleep(0.2)
-      except KeyboardInterrupt:
+      except (KeyboardInterrupt, StopIteration):
         break
 
 
@@ -122,8 +117,6 @@ class Drop(object):
       self.length = random.randrange(1, 40)
     if source == 'fastx':
       self.bases = get_bases(idle_bases, new_reads)
-      if self.bases is None:
-        raise StopIteration
     else:
       self.bases = None
     self.x = random.randrange(width)
@@ -131,18 +124,17 @@ class Drop(object):
 
 
 def get_bases(idle_bases, new_reads):
+  # Raises a StopIteration when there are no more reads.
   if idle_bases:
     return idle_bases.pop()
   else:
-    try:
-      read = next(new_reads)
-    except StopIteration:
-      return None
+    read = next(new_reads)
   return char_generator(read.seq)
 
 
 def get_base(drop, idle_bases, new_reads):
   # Get the next base in the read, or start a new read, or end.
+  # Raises a StopIteration when there are no more reads.
   while True:
     bases = drop.bases
     try:
@@ -150,10 +142,7 @@ def get_base(drop, idle_bases, new_reads):
       return char
     except StopIteration:
       bases = get_bases(idle_bases, new_reads)
-      if bases is None:
-        return None
-      else:
-        drop.bases = bases
+      drop.bases = bases
 
 
 def char_generator(string):
