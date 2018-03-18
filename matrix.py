@@ -4,8 +4,6 @@ import time
 import curses
 import random
 
-DROP_LEN = 20
-
 
 def main(argv):
   dna = False
@@ -18,10 +16,11 @@ def main(argv):
     columns = []
     while True:
       try:
-        columns.append({'x':random.randrange(width), 'y':0})
+        drop_len = random.randrange(1, 40)
+        columns.append({'x':random.randrange(width), 'y':0, 'len':drop_len})
         done = []
         for (i, column) in enumerate(columns):
-          if column['y'] >= height + DROP_LEN:
+          if column['y'] >= height + column['len']:
             done.append(i)
             continue
           if dna:
@@ -32,9 +31,9 @@ def main(argv):
             # Draw the character.
             if column['y'] < height:
               draw_char(stdscr, height, width, column['y'], column['x'], char)
-            # Delete the character DROP_LEN before this one.
-            if column['y'] - DROP_LEN >= 0:
-              draw_char(stdscr, height, width, column['y'] - DROP_LEN, column['x'], ' ')
+            # Delete the character column['len'] before this one.
+            if column['y'] - column['len'] >= 0:
+              draw_char(stdscr, height, width, column['y'] - column['len'], column['x'], ' ')
             stdscr.refresh()
           except curses.error:
             scr = curses_screen()
