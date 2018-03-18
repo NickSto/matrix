@@ -38,7 +38,7 @@ def start_the_show(drop_len, source, new_reads):
   with curses_screen() as stdscr:
     (height, width) = stdscr.getmaxyx()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    columns = []
+    drops = []
     idle_bases = []
     while True:
       try:
@@ -53,15 +53,15 @@ def start_the_show(drop_len, source, new_reads):
             return
         else:
           bases = None
-        columns.append({'x':random.randrange(width), 'y':0, 'len':drop_len, 'bases':bases})
+        drops.append({'x':random.randrange(width), 'y':0, 'len':drop_len, 'bases':bases})
         done = []
-        for (i, column) in enumerate(columns):
-          if column['y'] >= height + column['len']:
+        for (i, drop) in enumerate(drops):
+          if drop['y'] >= height + drop['len']:
             done.append(i)
-            idle_bases.append(column['bases'])
+            idle_bases.append(drop['bases'])
             continue
           if source == 'fastx':
-            char = get_base(column, idle_bases, new_reads)
+            char = get_base(drop, idle_bases, new_reads)
             if char is None:
               return
           elif source == 'dna':
@@ -70,23 +70,23 @@ def start_the_show(drop_len, source, new_reads):
             char = chr(random.randrange(33, 127))
           try:
             # Draw the character.
-            if column['y'] < height:
-              draw_char(stdscr, height, width, column['y'], column['x'], char)
-            # Delete the character column['len'] before this one.
-            if column['y'] - column['len'] >= 0:
-              draw_char(stdscr, height, width, column['y'] - column['len'], column['x'], ' ')
+            if drop['y'] < height:
+              draw_char(stdscr, height, width, drop['y'], drop['x'], char)
+            # Delete the character drop['len'] before this one.
+            if drop['y'] - drop['len'] >= 0:
+              draw_char(stdscr, height, width, drop['y'] - drop['len'], drop['x'], ' ')
             stdscr.refresh()
           except curses.error:
             scr = curses_screen()
             scr.stdscr = stdscr
             scr.__exit__(1, 2, 3)
             sys.stderr.write('curses error on {{add,ins}}chr({}, {}, "{}")\n'
-                             .format(column['y'], column['x'], char))
+                             .format(drop['y'], drop['x'], char))
             raise
-          column['y'] += 1
+          drop['y'] += 1
           time.sleep(0.002)
         for i in done:
-          del(columns[i])
+          del(drops[i])
         # time.sleep(0.2)
       except KeyboardInterrupt:
         break
@@ -130,10 +130,10 @@ def get_bases(idle_bases, new_reads):
   return char_generator(read.seq)
 
 
-def get_base(column, idle_bases, new_reads):
+def get_base(drop, idle_bases, new_reads):
   # Get the next base in the read, or start a new read, or end.
   while True:
-    bases = column['bases']
+    bases = drop['bases']
     try:
       char = next(bases)
       return char
@@ -142,7 +142,7 @@ def get_base(column, idle_bases, new_reads):
       if bases is None:
         return None
       else:
-        column['bases'] = bases
+        drop['bases'] = bases
 
 
 def char_generator(string):
