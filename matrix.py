@@ -29,7 +29,7 @@ def main(argv):
             char = chr(random.randrange(33, 127))
           try:
             # addch in the bottom-right corner raises an error.
-            if column['y'] == height - 1 and column['y'] == width - 1:
+            if column['y'] == height - 1 and column['x'] == width - 1:
               stdscr.insch(column['y'], column['x'], char, curses.color_pair(1))
             else:
               stdscr.addch(column['y'], column['x'], char, curses.color_pair(1))
