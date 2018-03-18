@@ -4,6 +4,8 @@ import time
 import curses
 import random
 
+DROP_LEN = 20
+
 
 def main(argv):
   dna = False
@@ -20,7 +22,7 @@ def main(argv):
           columns.append({'x':random.randrange(width), 'y':0})
         done = []
         for (i, column) in enumerate(columns):
-          if column['y'] == height or (column['x'] == width - 1 and column['y'] == height - 1):
+          if column['y'] >= height + DROP_LEN:
             done.append(i)
             continue
           if dna:
@@ -28,17 +30,18 @@ def main(argv):
           else:
             char = chr(random.randrange(33, 127))
           try:
-            # addch in the bottom-right corner raises an error.
-            if column['y'] == height - 1 and column['x'] == width - 1:
-              stdscr.insch(column['y'], column['x'], char, curses.color_pair(1))
-            else:
-              stdscr.addch(column['y'], column['x'], char, curses.color_pair(1))
+            # Draw the character.
+            if column['y'] < height:
+              draw_char(stdscr, height, width, column['y'], column['x'], char)
+            # Delete the character DROP_LEN before this one.
+            if column['y'] - DROP_LEN >= 0:
+              draw_char(stdscr, height, width, column['y'] - DROP_LEN, column['x'], ' ')
             stdscr.refresh()
           except curses.error:
             scr = curses_screen()
             scr.stdscr = stdscr
             scr.__exit__(1, 2, 3)
-            sys.stderr.write('curses error on {add,ins}chr({}, {}, "{}")\n'
+            sys.stderr.write('curses error on {{add,ins}}chr({}, {}, "{}")\n'
                              .format(column['y'], column['x'], char))
             raise
           column['y'] += 1
@@ -48,6 +51,14 @@ def main(argv):
         # time.sleep(0.2)
       except KeyboardInterrupt:
         break
+
+
+def draw_char(stdscr, height, width, y, x, char):
+  if y == height - 1 and x == width - 1:
+    # If it's the lower-right corner, addch() throws an error. Use insch() instead.
+    stdscr.insch(y, x, char, curses.color_pair(1))
+  else:
+    stdscr.addch(y, x, char, curses.color_pair(1))
 
 
 # Create a with context to encapsulate the setup and tear down.
