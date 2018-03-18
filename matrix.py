@@ -3,13 +3,22 @@ import sys
 import time
 import curses
 import random
+import argparse
+
+
+def make_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('positionals', nargs='*',
+    help='Ignored.')
+  parser.add_argument('-d', '--dna', action='store_true',
+    help='Use random DNA bases instead of random ASCII.')
+  return parser
 
 
 def main(argv):
-  dna = False
-  if len(sys.argv) > 1:
-    if sys.argv[1] == '-d':
-      dna = True
+  parser = make_argparser()
+  args = parser.parse_args(argv[1:])
+
   with curses_screen() as stdscr:
     (height, width) = stdscr.getmaxyx()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
@@ -23,7 +32,7 @@ def main(argv):
           if column['y'] >= height + column['len']:
             done.append(i)
             continue
-          if dna:
+          if args.dna:
             char = random.choice(('A', 'C', 'G', 'T'))
           else:
             char = chr(random.randrange(33, 127))
