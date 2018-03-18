@@ -4,40 +4,67 @@ import time
 import curses
 import random
 import argparse
+from bfx import getreads
 
 
 def make_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument('positionals', nargs='*',
     help='Ignored.')
-  parser.add_argument('-d', '--dna', action='store_true',
+  parser.add_argument('-d', '--dna', dest='source', action='store_const', const='dna', default='ascii',
     help='Use random DNA bases instead of random ASCII.')
   parser.add_argument('-l', '--drop-len', type=int,
     help='Use constant-length drops this many characters long.')
+  parser.add_argument('-q', '--fastq', type=argparse.FileType('r'))
+  parser.add_argument('-a', '--fasta', type=argparse.FileType('r'))
   return parser
 
 
 def main(argv):
   parser = make_argparser()
   args = parser.parse_args(argv[1:])
+  if args.fasta:
+    new_reads = getreads.getparser(args.fasta, 'fasta').parser()
+    source = 'fastx'
+  elif args.fastq:
+    new_reads = getreads.getparser(args.fastq, 'fastq').parser()
+    source = 'fastx'
+  else:
+    source = args.source
+  start_the_show(args.drop_len, source, new_reads)
 
+
+def start_the_show(drop_len, source, new_reads):
   with curses_screen() as stdscr:
     (height, width) = stdscr.getmaxyx()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
     columns = []
+    idle_bases = []
     while True:
       try:
-        if args.drop_len:
-          drop_len = args.drop_len
+        # Make a new drop.
+        if drop_len:
+          drop_len = drop_len
         else:
           drop_len = random.randrange(1, 40)
-        columns.append({'x':random.randrange(width), 'y':0, 'len':drop_len})
+        if source == 'fastx':
+          bases = get_bases(idle_bases, new_reads)
+          if bases is None:
+            return
+        else:
+          bases = None
+        columns.append({'x':random.randrange(width), 'y':0, 'len':drop_len, 'bases':bases})
         done = []
         for (i, column) in enumerate(columns):
           if column['y'] >= height + column['len']:
             done.append(i)
+            idle_bases.append(column['bases'])
             continue
-          if args.dna:
+          if source == 'fastx':
+            char = get_base(column, idle_bases, new_reads)
+            if char is None:
+              return
+          elif source == 'dna':
             char = random.choice(('A', 'C', 'G', 'T'))
           else:
             char = chr(random.randrange(33, 127))
@@ -90,6 +117,37 @@ class curses_screen:
         curses.echo()
         curses.curs_set(1)
         curses.endwin()
+
+
+def get_bases(idle_bases, new_reads):
+  if idle_bases:
+    return idle_bases.pop()
+  else:
+    try:
+      read = next(new_reads)
+    except StopIteration:
+      return None
+  return char_generator(read.seq)
+
+
+def get_base(column, idle_bases, new_reads):
+  # Get the next base in the read, or start a new read, or end.
+  while True:
+    bases = column['bases']
+    try:
+      char = next(bases)
+      return char
+    except StopIteration:
+      bases = get_bases(idle_bases, new_reads)
+      if bases is None:
+        return None
+      else:
+        column['bases'] = bases
+
+
+def char_generator(string):
+  for char in string:
+    yield char
 
 
 if __name__ == '__main__':
