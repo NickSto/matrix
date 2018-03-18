@@ -18,8 +18,7 @@ def main(argv):
     columns = []
     while True:
       try:
-        if random.random() < 0.75:
-          columns.append({'x':random.randrange(width), 'y':0})
+        columns.append({'x':random.randrange(width), 'y':0})
         done = []
         for (i, column) in enumerate(columns):
           if column['y'] >= height + DROP_LEN:
@@ -45,7 +44,7 @@ def main(argv):
                              .format(column['y'], column['x'], char))
             raise
           column['y'] += 1
-          time.sleep(0.01)
+          time.sleep(0.002)
         for i in done:
           del(columns[i])
         # time.sleep(0.2)
