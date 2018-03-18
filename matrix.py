@@ -12,6 +12,8 @@ def make_argparser():
     help='Ignored.')
   parser.add_argument('-d', '--dna', action='store_true',
     help='Use random DNA bases instead of random ASCII.')
+  parser.add_argument('-l', '--drop-len', type=int,
+    help='Use constant-length drops this many characters long.')
   return parser
 
 
@@ -25,7 +27,10 @@ def main(argv):
     columns = []
     while True:
       try:
-        drop_len = random.randrange(1, 40)
+        if args.drop_len:
+          drop_len = args.drop_len
+        else:
+          drop_len = random.randrange(1, 40)
         columns.append({'x':random.randrange(width), 'y':0, 'len':drop_len})
         done = []
         for (i, column) in enumerate(columns):
