@@ -18,6 +18,8 @@ def make_argparser():
     help='Use constant-length drops this many characters long.')
   parser.add_argument('-q', '--fastq')
   parser.add_argument('-a', '--fasta')
+  parser.add_argument('-s', '--speed', type=int, default=500,
+    help='Drawing speed, in characters per second (globally). Default: %(default)d')
   return parser
 
 
@@ -33,10 +35,10 @@ def main(argv):
   else:
     bases_generator = None
     source = args.source
-  start_the_show(args.drop_len, source, bases_generator)
+  start_the_show(args.speed, args.drop_len, source, bases_generator)
 
 
-def start_the_show(drop_len, source, bases_generator):
+def start_the_show(speed, drop_len, source, bases_generator):
   with CursesScreen() as stdscr:
     height, width = stdscr.getmaxyx()
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
@@ -69,7 +71,7 @@ def start_the_show(drop_len, source, bases_generator):
                              .format(drop.y, drop.x, char))
             raise
           drop.y += 1
-          time.sleep(0.002)
+          time.sleep(1/speed)
         for i in done:
           del(drops[i])
       except (KeyboardInterrupt, StopIteration):
