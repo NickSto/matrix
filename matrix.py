@@ -52,12 +52,7 @@ def start_the_show(drop_len, source, new_reads):
             done.append(i)
             idle_bases.append(drop.bases)
             continue
-          if source == 'fastx':
-            char = get_base(drop, idle_bases, new_reads)
-          elif source == 'dna':
-            char = random.choice(('A', 'C', 'G', 'T'))
-          else:
-            char = chr(random.randrange(33, 127))
+          char = drop.get_char()
           try:
             # Draw the character.
             if drop.y < height:
@@ -77,7 +72,6 @@ def start_the_show(drop_len, source, new_reads):
           time.sleep(0.002)
         for i in done:
           del(drops[i])
-        # time.sleep(0.2)
       except (KeyboardInterrupt, StopIteration):
         break
 
@@ -111,38 +105,48 @@ class CursesScreen(object):
 
 class Drop(object):
   def __init__(self, width, length=None, source=None, idle_bases=None, new_reads=None):
+    self.x = random.randrange(width)
+    self.y = 0
+    self.source = source
     if length:
       self.length = length
     else:
       self.length = random.randrange(1, 40)
+    # Global state
+    self.idle_bases = idle_bases
+    self.new_reads = new_reads
+    # If the source is outside sequence, get a base generator for one read.
     if source == 'fastx':
-      self.bases = get_bases(idle_bases, new_reads)
+      self.bases = self.get_bases()
     else:
       self.bases = None
-    self.x = random.randrange(width)
-    self.y = 0
 
 
-def get_bases(idle_bases, new_reads):
-  # Raises a StopIteration when there are no more reads.
-  if idle_bases:
-    return idle_bases.pop()
-  else:
-    read = next(new_reads)
-  return char_generator(read.seq)
+  def get_bases(self):
+    # Raises a StopIteration when there are no more reads.
+    if self.idle_bases:
+      return self.idle_bases.pop()
+    else:
+      read = next(self.new_reads)
+    return char_generator(read.seq)
 
 
-def get_base(drop, idle_bases, new_reads):
-  # Get the next base in the read, or start a new read, or end.
-  # Raises a StopIteration when there are no more reads.
-  while True:
-    bases = drop.bases
-    try:
-      char = next(bases)
-      return char
-    except StopIteration:
-      bases = get_bases(idle_bases, new_reads)
-      drop.bases = bases
+  def get_char(self):
+    # Get the next base in the read, or start a new read, or end.
+    # Raises a StopIteration when there are no more reads.
+    if self.source == 'ascii':
+      return chr(random.randrange(33, 127))
+    elif self.source == 'dna':
+      return random.choice(('A', 'C', 'G', 'T'))
+    elif self.source == 'fastx':
+      while True:
+        bases = self.bases
+        try:
+          char = next(bases)
+          return char
+        except StopIteration:
+          bases = self.get_bases(self.idle_bases, self.new_reads)
+          self.bases = bases
 
 
 def char_generator(string):
