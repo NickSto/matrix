@@ -17,10 +17,20 @@ now give output as it's generated. So you can see your reads coming in *live*, i
 Usage
 -----
 
-Just point it to a FASTA file with `-a` or a FASTQ file with `-q`. Or, give the path to a directory
-of FASTA or FASTQ files. Then it'll start showing each file, starting with the newest. If a new file
-appears, it'll immediately start reading that one. So you can point this to the directory your
-sequencer is depositing FASTQ's into, and it'll automatically show the newest sequence that's arrived.
+This depends on a module in the `bfx` submodule, so you'll have to clone this with the `--recursive`
+option:  
+`$ git clone --recursive 'https://github.com/NickSto/matrix.py.git'`
+
+Then, just point it to a FASTA file with `-a` or a FASTQ file with `-q`. It'll start showing bases
+from the file, with each "drop" showing the sequence from one read. And when one drop ends, the next
+picks up where it left off in the read.
+
+Importantly, you can also give the path to a directory of FASTA or FASTQ files. Then it'll start
+showing each file, starting with the newest. If a new file appears, it'll immediately start reading
+that one. So you can point this to the directory your sequencer is depositing FASTQ's into, and
+it'll automatically show the newest sequence that's arrived.
+
+You can see the rest of the options with the `--help` argument.
 
 Unfortunately, the colors don't show correctly in the default OS X terminal. It shows up as white
 text on black (not very Matrix-y). If you'd really like to get it looking better, here's a workaround:  
