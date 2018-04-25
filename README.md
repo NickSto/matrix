@@ -32,8 +32,12 @@ it'll automatically show the newest sequence that's arrived.
 
 You can see the rest of the options with the `--help` argument.
 
+OS X bug
+--------
+
 Unfortunately, the colors don't show correctly in the default OS X terminal. It shows up as white
 text on black (not very Matrix-y). If you'd really like to get it looking better, here's a workaround:  
+
 Go to Terminal > Preferences > Profiles  
 \- You might want to create a new profile for this.  
 Then, select whichever profile you want to use and change these values under the "Text" tab:  
