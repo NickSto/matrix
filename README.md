@@ -19,7 +19,7 @@ Usage
 
 This depends on a module in the `bfx` submodule, so you'll have to clone this with the `--recursive`
 option:  
-`$ git clone --recursive 'https://github.com/NickSto/matrix.py.git'`
+`$ git clone --recursive 'https://github.com/NickSto/matrix.git'`
 
 Then, just point it to a FASTA file with `-a` or a FASTQ file with `-q`. It'll start showing bases
 from the file, with each "drop" showing the sequence from one read. And when one drop ends, the next
